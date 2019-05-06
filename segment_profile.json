@@ -1,0 +1,56 @@
+{
+  "neutro_nucleus": {
+    "__SegmentationProfile__": true,
+    "name": "neutro_nucleus",
+    "algorithm": "Lower threshold",
+    "values": {
+      "channel": 4,
+      "noise_removal": {
+        "name": "Gauss",
+        "values": {
+          "gauss_type": {
+            "__Enum__": true,
+            "__subtype__": "PartSeg.utils.segmentation.noise_filtering.GaussType",
+            "value": 1
+          },
+          "radius": 1.0
+        }
+      },
+      "threshold": {
+        "name": "Manual",
+        "values": {
+          "threshold": 100
+        }
+      },
+      "minimum_size": 10,
+      "side_connection": false
+    }
+  },
+  "neutrofile_dead": {
+    "__SegmentationProfile__": true,
+    "name": "neutrofile_dead",
+    "algorithm": "Lower threshold",
+    "values": {
+      "channel": 3,
+      "noise_removal": {
+        "name": "Gauss",
+        "values": {
+          "gauss_type": {
+            "__Enum__": true,
+            "__subtype__": "PartSeg.utils.segmentation.noise_filtering.GaussType",
+            "value": 1
+          },
+          "radius": 1.0
+        }
+      },
+      "threshold": {
+        "name": "Manual",
+        "values": {
+          "threshold": 25
+        }
+      },
+      "minimum_size": 100,
+      "side_connection": false
+    }
+  }
+}
