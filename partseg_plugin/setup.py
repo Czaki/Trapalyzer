@@ -12,4 +12,4 @@ setup(name='PartSeg-neutrofile',
       entry_points={
             'PartSeg.plugins': [".neutrofile_analysis = neutrofile_plugin"]
       },
-      install_requires=["PartSeg"])
+      install_requires=["PartSeg", "numpy", "SimpleITK"])
