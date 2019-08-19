@@ -1,25 +1,25 @@
-from PartSeg.utils.analysis import statistics_calculation
-from PartSeg.utils.analysis.measurement_base import Leaf, AreaType, PerComponent, StatisticMethodBase
+from PartSeg.utils.analysis import measurement_calculation
+from PartSeg.utils.analysis.measurement_base import Leaf, AreaType, PerComponent, MeasurementMethodBase
 import SimpleITK as sitk
 import numpy as np
 
 
-class NetArea(StatisticMethodBase):
+class NetArea(MeasurementMethodBase):
     text_info = "Neutrofile net area", "Calculate area of neutrofile nets"
     @classmethod
     def get_units(cls, ndim):
-        return statistics_calculation.Volume.get_units(ndim)
+        return measurement_calculation.Volume.get_units(ndim)
 
     @staticmethod
     def calculate_property(area_array, **kwargs):
-        return statistics_calculation.Volume.calculate_property(area_array > 2, **kwargs)
+        return measurement_calculation.Volume.calculate_property(area_array > 2, **kwargs)
 
     @classmethod
     def get_starting_leaf(cls):
         return Leaf(name=cls.text_info[0], area=AreaType.Segmentation, per_component=PerComponent.No)
 
 
-class NetPercent(StatisticMethodBase):
+class NetPercent(MeasurementMethodBase):
     text_info = "Neutrofile net percent", "Total percentage occupied by neutrofile nets"
     @classmethod
     def get_units(cls, ndim):
@@ -27,15 +27,15 @@ class NetPercent(StatisticMethodBase):
 
     @staticmethod
     def calculate_property(area_array, **kwargs):
-        return statistics_calculation.Volume.calculate_property(area_array > 2, **kwargs)/\
-               statistics_calculation.Volume.calculate_property(area_array >=0, **kwargs)*100
+        return measurement_calculation.Volume.calculate_property(area_array > 2, **kwargs) / \
+               measurement_calculation.Volume.calculate_property(area_array >= 0, **kwargs)*100
 
     @classmethod
     def get_starting_leaf(cls):
         return Leaf(name=cls.text_info[0], area=AreaType.Segmentation, per_component=PerComponent.No)
 
 
-class AliveCount(StatisticMethodBase):
+class AliveCount(MeasurementMethodBase):
     text_info = "Neutrofile Alive count", "Count alive cells in neutrofiles"
 
     @classmethod
@@ -52,7 +52,7 @@ class AliveCount(StatisticMethodBase):
         return Leaf(name=cls.text_info[0], area=AreaType.Segmentation, per_component=PerComponent.No)
 
 
-class DeadCount(StatisticMethodBase):
+class DeadCount(MeasurementMethodBase):
     text_info = "Neutrofile dead count", "Count dead cells in neutrofiles"
 
     @classmethod
@@ -69,7 +69,7 @@ class DeadCount(StatisticMethodBase):
         return Leaf(name=cls.text_info[0], area=AreaType.Segmentation, per_component=PerComponent.No)
 
 
-class NetCount(StatisticMethodBase):
+class NetCount(MeasurementMethodBase):
     text_info = "Neutrofile net count", "Count net components in neutrofiles"
 
     @classmethod
