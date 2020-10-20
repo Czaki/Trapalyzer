@@ -15,7 +15,7 @@ def register():
         import importlib
         importlib.reload(segmentation)
         importlib.reload(measurement)
-    register_fun(segmentation.NeutrodfileSegmentation, RegisterEnum.analysis_algorithm)
+    register_fun(segmentation.NeutrofileSegmentation, RegisterEnum.analysis_algorithm)
     register_fun(measurement.NetArea, RegisterEnum.analysis_measurement)
     register_fun(measurement.NetPercent, RegisterEnum.analysis_measurement)
     register_fun(measurement.AliveCount, RegisterEnum.analysis_measurement)
