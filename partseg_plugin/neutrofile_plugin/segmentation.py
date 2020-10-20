@@ -5,11 +5,11 @@ from typing import Callable
 import SimpleITK as sitk
 import numpy as np
 
-from PartSeg.utils.algorithm_describe_base import AlgorithmProperty, AlgorithmDescribeBase
-from PartSeg.utils.channel_class import Channel
-from PartSeg.utils.segmentation import RestartableAlgorithm
-from PartSeg.utils.segmentation.algorithm_base import SegmentationResult
-from PartSeg.utils.segmentation.threshold import threshold_dict, BaseThreshold
+from PartSegCore.algorithm_describe_base import AlgorithmProperty, AlgorithmDescribeBase
+from PartSegCore.channel_class import Channel
+from PartSegCore.segmentation import RestartableAlgorithm
+from PartSegCore.segmentation.algorithm_base import SegmentationResult
+from PartSegCore.segmentation.threshold import threshold_dict, BaseThreshold
 
 
 class NeutrodfileSegmentation(RestartableAlgorithm):
@@ -54,7 +54,7 @@ class NeutrodfileSegmentation(RestartableAlgorithm):
         if self.new_parameters["separate_nets"]:
             nets_components[nets_components > 0] += 2
             result[nets_components > 0] = nets_components[nets_components > 0]
-        return SegmentationResult(result, self.get_segmentation_profile(), self.segmentation, None)
+        return SegmentationResult(result, self.get_segmentation_profile())
 
     def get_info_text(self):
         return f"Alive: {self.good}, dead: {self.bad}, nets: {self.nets}"
@@ -72,6 +72,10 @@ class NeutrodfileSegmentation(RestartableAlgorithm):
     @classmethod
     def get_name(cls) -> str:
         return "Segment Neutrofile"
+
+    @staticmethod
+    def single_channel():
+        return False
 
     @classmethod
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
