@@ -1,0 +1,42 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = ["setuptools>=42.0.0", "setuptools_scm[toml]>=3.4"]  # PEP 508 specifications.
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "package/PartSeg/version.py"
+
+[tool.black]
+line-length = 120
+target-version = ['py36']
+include = '\.pyi?$'
+exclude = '''
+
+(
+  /(
+      \.eggs         # exclude a few common directories in the
+    | \.git          # root of the project
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+  )/
+  | foo.py           # also separately exclude a file named foo.py in
+                     # the root of the project
+  | package/PartSeg/version.py
+)
+'''
+
+[tool.isort]
+line_length=120
+known_first_party=['PartSeg', 'PartSegData','PartSegCore','PartSegImage']
+profile="black"
+src_paths=["package"]
+
+
+[tool.check-manifest]
+ignore = [".travis.yml", "package/PartSeg/changelog.py", "package/PartSeg/version.py"]
