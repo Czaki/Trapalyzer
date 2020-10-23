@@ -6,19 +6,20 @@ import SimpleITK as sitk
 import numpy as np
 
 from PartSegCore.algorithm_describe_base import AlgorithmProperty, AlgorithmDescribeBase
-from PartSegCore.analysis.measurement_calculation import (
-    MeasurementResult,
-    MeasurementProfile,
-)
+
 from PartSegCore.channel_class import Channel
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import SegmentationResult, AdditionalLayerDescription
 from PartSegCore.segmentation.threshold import (
     threshold_dict,
     BaseThreshold,
-    DoubleThreshold,
     ManualThreshold,
 )
+
+ALIVE_VAL = 1
+DEAD_VAL = 2
+BACTERIA_VAL = 3
+NET_VAL = 4
 
 
 class NeutrofileSegmentation(RestartableAlgorithm):
@@ -51,6 +52,17 @@ class NeutrofileSegmentation(RestartableAlgorithm):
             operator.gt,
         )
 
+        out_dna_components = sitk.GetArrayFromImage(
+            sitk.RelabelComponent(
+                sitk.ConnectedComponent(sitk.GetImageFromArray(out_dna_mask)),
+                self.new_parameters["net_size"],
+            )
+        )
+
+        _inner_dna_mask = inner_dna_mask.copy()
+
+        inner_dna_mask[out_dna_components > 0] = 0
+
         inner_dna_components = sitk.GetArrayFromImage(
             sitk.RelabelComponent(
                 sitk.ConnectedComponent(sitk.GetImageFromArray(inner_dna_mask)),
@@ -60,16 +72,11 @@ class NeutrofileSegmentation(RestartableAlgorithm):
 
         idn = inner_dna_components.copy()
 
-        out_dna_components = sitk.GetArrayFromImage(
-            sitk.RelabelComponent(
-                sitk.ConnectedComponent(sitk.GetImageFromArray(out_dna_mask)),
-                self.new_parameters["net_size"],
-            )
-        )
+
 
         odn = out_dna_components.copy()
 
-        profile_info = MeasurementProfile.get_segmentation_to_mask_component(inner_dna_components, out_dna_components)
+        # profile_info = MeasurementProfile.get_segmentation_to_mask_component(inner_dna_components, out_dna_components)
 
         result = np.zeros(inner_dna_components.shape, dtype=np.uint8)
         self.good, self.bad, self.nets, self.bacteria, self.net_area = 0, 0, 0, 0, 0
@@ -82,23 +89,21 @@ class NeutrofileSegmentation(RestartableAlgorithm):
                 continue
             mm = inner_dna_components == val
             count = np.sum(out_dna_mask[mm])
-            if profile_info.components_translation[val] and count >= ratio * sizes[val]:
-                el = profile_info.components_translation[val][0]
-                out_dna_components[mm] = el
-                continue
 
+            mean_brightness = np.mean(channel[mm])
             if sizes[val] < max_size:
                 if count < ratio * sizes[val]:
-                    result[mm] = 1
-                    self.good += 1
-                elif np.mean(channel[mm]) < alive_thr_val:
-                    result[mm] = 3
-                    self.bacteria += 1
+                    if mean_brightness > alive_thr_val:
+                        result[mm] = ALIVE_VAL
+                        self.good += 1
+                    else:
+                        result[mm] = BACTERIA_VAL
+                        self.bacteria += 1
                 else:
-                    result[mm] = 2
+                    result[mm] = DEAD_VAL
                     self.bad += 1
-            elif sizes[val] < self.new_parameters["net_size"]:
-                result[mm] = 3
+            elif count < ratio * sizes[val]:
+                result[mm] = BACTERIA_VAL
                 self.bacteria += 1
             else:
                 print("problem here", val, sizes[val])
@@ -107,13 +112,14 @@ class NeutrofileSegmentation(RestartableAlgorithm):
         self.nets = np.max(out_dna_components)
         self.net_area = np.count_nonzero(out_dna_components)
         if self.new_parameters["separate_nets"]:
-            result[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + 4
+            result[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL -1)
         else:
-            result[out_dna_components > 0] = 4
+            result[out_dna_components > 0] = NET_VAL
         return SegmentationResult(
             result,
             self.get_segmentation_profile(),
             {
+                "inner dna base": AdditionalLayerDescription(_inner_dna_mask, "labels", "inner dna base"),
                 "inner dna": AdditionalLayerDescription(inner_dna_mask, "labels", "inner dna"),
                 "inner dna com": AdditionalLayerDescription(idn, "labels", "inner dna com"),
                 "outer dna": AdditionalLayerDescription(out_dna_mask, "labels", "out dna"),
