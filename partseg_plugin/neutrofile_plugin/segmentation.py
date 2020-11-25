@@ -19,7 +19,9 @@ from PartSegCore.segmentation.threshold import (
 ALIVE_VAL = 1
 DEAD_VAL = 2
 BACTERIA_VAL = 3
-NET_VAL = 4
+OTHER_VAL = 4
+NET_VAL = 5
+LABELING_NAME = "labeling"
 
 
 class NeutrofileSegmentation(RestartableAlgorithm):
@@ -61,12 +63,13 @@ class NeutrofileSegmentation(RestartableAlgorithm):
     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
         dna_channel = self.get_channel(self.new_parameters["dna_marker"])
         _mask, alive_thr_val = self._calculate_mask(dna_channel, "threshold2")
-        result = np.zeros(inner_dna_components.shape, dtype=np.uint8)
+        result_labeling = np.zeros(inner_dna_components.shape, dtype=np.uint8)
+
         self.good, self.bad, self.nets, self.bacteria, self.net_area = 0, 0, 0, 0, 0
         sizes = np.bincount(inner_dna_components.flat)
         ratio = self.new_parameters["dead_ratio"]
         max_size = min(self.new_parameters["maximum_neutrofile_size"], self.new_parameters["net_size"])
-
+        roi_annotation = {}
         for val in np.unique(inner_dna_components):
             if val == 0:
                 continue
@@ -77,24 +80,27 @@ class NeutrofileSegmentation(RestartableAlgorithm):
             if sizes[val] < max_size:
                 if count < ratio * sizes[val]:
                     if mean_brightness > alive_thr_val:
-                        result[mm] = ALIVE_VAL
+                        roi_annotation[val] = {"type": "Alive neutrofile", "Mean brightness": mean_brightness, "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                        result_labeling[mm] = ALIVE_VAL
                         self.good += 1
                     else:
-                        result[mm] = BACTERIA_VAL
+                        roi_annotation[val] = {"type": "Bacteria group", "Mean brightness": mean_brightness, "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                        result_labeling[mm] = BACTERIA_VAL
                         self.bacteria += 1
                 else:
-                    result[mm] = DEAD_VAL
+                    roi_annotation[val] = {"type": "Dead neutrofile", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                    result_labeling[mm] = DEAD_VAL
                     self.bad += 1
             elif count < ratio * sizes[val]:
-                result[mm] = BACTERIA_VAL
+                roi_annotation[val] = {"type": "Bacteria group", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                result_labeling[mm] = BACTERIA_VAL
                 self.bacteria += 1
             else:
-                result[mm] = BACTERIA_VAL
+                roi_annotation[val] = {"type": "Bacteria group", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                result_labeling[mm] = BACTERIA_VAL
                 self.bacteria += 1
                 print("problem here", val, sizes[val])
-                self.nets += 1
-                self.net_area += np.sum(mm)
-        return result
+        return result_labeling, roi_annotation
 
 
     def calculation_run(self, report_fun: Callable[[str, int], None] = None) -> SegmentationResult:
@@ -118,15 +124,19 @@ class NeutrofileSegmentation(RestartableAlgorithm):
         idn = inner_dna_components.copy()
         odn = out_dna_components.copy()
 
-        result =  self._classify_neutrofile(inner_dna_components, out_dna_mask)
+        result_labeling, roi_annotation =  self._classify_neutrofile(inner_dna_components, out_dna_mask)
         self.nets = np.max(out_dna_components)
         self.net_area = np.count_nonzero(out_dna_components)
         if self.new_parameters["separate_nets"]:
-            result[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL -1)
+            result_labeling[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL -1)
         else:
-            result[out_dna_components > 0] = NET_VAL
+            result_labeling[out_dna_components > 0] = NET_VAL
+        max_component = inner_dna_components.max()
+        inner_dna_components[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + max_component
+        for val in np.unique(out_dna_components[out_dna_components > 0]):
+            roi_annotation[val + max_component] = {"type": "Neutrofile net"}
         return SegmentationResult(
-            result,
+            inner_dna_components,
             self.get_segmentation_profile(),
             {
                 "inner dna base": AdditionalLayerDescription(_inner_dna_mask, "labels", "inner dna base"),
@@ -135,6 +145,8 @@ class NeutrofileSegmentation(RestartableAlgorithm):
                 "outer dna": AdditionalLayerDescription(out_dna_mask, "labels", "out dna"),
                 "outer dna com": AdditionalLayerDescription(odn, "labels", "outer dna com"),
             },
+            alternative_representation={LABELING_NAME: result_labeling},
+            roi_annotation=roi_annotation,
         )
 
     def get_info_text(self):

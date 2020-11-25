@@ -25,3 +25,4 @@ def register():
     register_fun(measurement.DeadCount, RegisterEnum.analysis_measurement)
     register_fun(measurement.NetCount, RegisterEnum.analysis_measurement)
     register_fun(measurement.BacteriaCount, RegisterEnum.analysis_measurement)
+    register_fun(measurement.ClassifyNeutrofile, RegisterEnum.analysis_measurement)
