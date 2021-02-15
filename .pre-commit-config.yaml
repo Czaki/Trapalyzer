@@ -1,0 +1,49 @@
+default_language_version:
+    python: python3.7
+
+repos:
+-   repo: https://github.com/psf/black
+    rev: 20.8b1
+    hooks:
+    - id: black
+      pass_filenames: true
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.4.0
+    hooks:
+    - id: check-json
+    - id: check-yaml
+    - id: check-merge-conflict
+    - id: end-of-file-fixer
+    - id: trailing-whitespace
+      exclude: .*\.md
+    - id: debug-statements
+    - id: mixed-line-ending
+-   repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v1.16.0
+    hooks:
+    - id: setup-cfg-fmt
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v2.9.0
+    hooks:
+    - id: pyupgrade
+      args: ["--py36-plus"]
+-   repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.7.0
+    hooks:
+    -   id: rst-backticks
+-   repo: https://github.com/PyCQA/isort
+    rev: '5.7.0'  # Use the revision sha / tag you want to point at
+    hooks:
+    -   id: isort
+
+-   repo: https://github.com/myint/autoflake
+    rev: 'v1.4'  # Use the revision sha / tag you want to point at
+    hooks:
+    -   id: autoflake
+        args: ["--remove-all-unused-imports", "-i"]
+
+-   repo: https://github.com/markdownlint/markdownlint
+    rev: v0.11.0  # Use the ref you want to point at
+    hooks:
+    - id: markdownlint
+      exclude: vendored|__init__.py|examples|TEST_FAIL_TEMPLATE.md

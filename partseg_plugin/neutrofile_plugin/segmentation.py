@@ -2,19 +2,17 @@ import operator
 import typing
 from copy import deepcopy
 from typing import Callable
-import SimpleITK as sitk
+
 import numpy as np
+import SimpleITK as sitk
 
-from PartSegCore.algorithm_describe_base import AlgorithmProperty, AlgorithmDescribeBase
-
+from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
 from PartSegCore.channel_class import Channel
-from PartSegCore.segmentation import RestartableAlgorithm
-from PartSegCore.segmentation.algorithm_base import SegmentationResult, AdditionalLayerDescription
-from PartSegCore.segmentation.threshold import (
-    threshold_dict,
-    BaseThreshold,
-    ManualThreshold,
-)
+from PartSegCore.segmentation import RestartableAlgorithm, SegmentationAlgorithm
+from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
+from PartSegCore.segmentation.threshold import BaseThreshold, ManualThreshold, threshold_dict
+
+from .widgets import TrapezoidWidget
 
 ALIVE_VAL = 1
 DEAD_VAL = 2
@@ -22,6 +20,46 @@ BACTERIA_VAL = 3
 OTHER_VAL = 4
 NET_VAL = 5
 LABELING_NAME = "labeling"
+
+
+class TrapezoidNeutrofileSegmentation(SegmentationAlgorithm):
+    @classmethod
+    def support_time(cls):
+        return False
+
+    @classmethod
+    def support_z(cls):
+        return False
+
+    def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
+        pass
+
+    def get_info_text(self):
+        return ""
+
+    def get_segmentation_profile(self) -> ROIExtractionProfile:
+        return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "Trapezoid Segment Neutrofile"
+
+    @classmethod
+    def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
+        return [
+            AlgorithmProperty(
+                "alive_volume",
+                "Alive volume",
+                {"lower_bound": 10, "upper_bound": 500, "softness": 0.5},
+                property_type=TrapezoidWidget,
+            ),
+            AlgorithmProperty(
+                "alive_brightness",
+                "Alive br",
+                {"lower_bound": 10, "upper_bound": 500, "softness": 0.5},
+                property_type=TrapezoidWidget,
+            ),
+        ]
 
 
 class NeutrofileSegmentation(RestartableAlgorithm):
@@ -49,7 +87,7 @@ class NeutrofileSegmentation(RestartableAlgorithm):
                 min_size,
             )
         )
-    
+
     @staticmethod
     def _remove_net_components(channel, components, min_reach_thr):
         for val in np.unique(components):
@@ -80,28 +118,49 @@ class NeutrofileSegmentation(RestartableAlgorithm):
             if sizes[val] < max_size:
                 if count < ratio * sizes[val]:
                     if mean_brightness > alive_thr_val:
-                        roi_annotation[val] = {"type": "Alive neutrofile", "Mean brightness": mean_brightness, "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                        roi_annotation[val] = {
+                            "type": "Alive neutrofile",
+                            "Mean brightness": mean_brightness,
+                            "Voxels": sizes[val],
+                            "Dead marker ratio": count / sizes[val],
+                        }
                         result_labeling[mm] = ALIVE_VAL
                         self.good += 1
                     else:
-                        roi_annotation[val] = {"type": "Bacteria group", "Mean brightness": mean_brightness, "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                        roi_annotation[val] = {
+                            "type": "Bacteria group",
+                            "Mean brightness": mean_brightness,
+                            "Voxels": sizes[val],
+                            "Dead marker ratio": count / sizes[val],
+                        }
                         result_labeling[mm] = BACTERIA_VAL
                         self.bacteria += 1
                 else:
-                    roi_annotation[val] = {"type": "Dead neutrofile", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                    roi_annotation[val] = {
+                        "type": "Dead neutrofile",
+                        "Voxels": sizes[val],
+                        "Dead marker ratio": count / sizes[val],
+                    }
                     result_labeling[mm] = DEAD_VAL
                     self.bad += 1
             elif count < ratio * sizes[val]:
-                roi_annotation[val] = {"type": "Bacteria group", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                roi_annotation[val] = {
+                    "type": "Bacteria group",
+                    "Voxels": sizes[val],
+                    "Dead marker ratio": count / sizes[val],
+                }
                 result_labeling[mm] = BACTERIA_VAL
                 self.bacteria += 1
             else:
-                roi_annotation[val] = {"type": "Bacteria group", "Voxels": sizes[val], "Dead marker ratio": count / sizes[val]}
+                roi_annotation[val] = {
+                    "type": "Bacteria group",
+                    "Voxels": sizes[val],
+                    "Dead marker ratio": count / sizes[val],
+                }
                 result_labeling[mm] = BACTERIA_VAL
                 self.bacteria += 1
                 print("problem here", val, sizes[val])
         return result_labeling, roi_annotation
-
 
     def calculation_run(self, report_fun: Callable[[str, int], None] = None) -> SegmentationResult:
         for key in self.new_parameters.keys():
@@ -111,7 +170,6 @@ class NeutrofileSegmentation(RestartableAlgorithm):
         inner_dna_mask, thr_val = self._calculate_mask(dna_channel, "threshold")
         out_dna_mask, dead_thr_val = self._calculate_mask(dead_dna_channel, "dead_threshold")
         _mask, net_thr_val = self._calculate_mask(dead_dna_channel, "net_threshold")
-
 
         out_dna_components = self._calc_components(out_dna_mask, self.new_parameters["net_size"])
         out_dna_components = self._remove_net_components(dead_dna_channel, out_dna_components, net_thr_val)
@@ -124,11 +182,11 @@ class NeutrofileSegmentation(RestartableAlgorithm):
         idn = inner_dna_components.copy()
         odn = out_dna_components.copy()
 
-        result_labeling, roi_annotation =  self._classify_neutrofile(inner_dna_components, out_dna_mask)
+        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, out_dna_mask)
         self.nets = np.max(out_dna_components)
         self.net_area = np.count_nonzero(out_dna_components)
         if self.new_parameters["separate_nets"]:
-            result_labeling[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL -1)
+            result_labeling[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL - 1)
         else:
             result_labeling[out_dna_components > 0] = NET_VAL
         max_component = inner_dna_components.max()
