@@ -23,7 +23,7 @@ class TrapezoidParametersWidget(QWidget):
         super().__init__()
         self.lower_bound = ShortCustomDoubleSpinBox()
         self.lower_bound.setRange(0, 1000)
-        self.lower_bound.setToolTip("Lower bound")
+        self.lower_bound.setToolTip("lower bound")
         self.lower_bound.valueChanged.connect(self._update_value)
         self.upper_bound = ShortCustomDoubleSpinBox()
         self.upper_bound.setRange(0, 1000)
