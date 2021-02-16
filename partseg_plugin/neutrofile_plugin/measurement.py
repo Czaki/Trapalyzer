@@ -19,30 +19,6 @@ def count_components(area_array: Union[np.ndarray, bool]) -> int:
     ).max()
 
 
-def trapezoid_score_function(x, lbound, ubound, softness=0.5):
-    """
-    Compute a score on a scale from 0 to 1 that indicate whether values from x belong
-    to the interval (lbound, ubound) with a softened boundary.
-    If a point lies inside the interval, its score is equal to 1.
-    If the point is further away than the interval length multiplied by the softness parameter,
-    its score is equal to zero.
-    Otherwise the score is given by a linear function.
-    """
-    interval_width = ubound - lbound
-    subound = ubound + softness * interval_width
-    slbound = lbound - softness * interval_width
-    swidth = softness * interval_width  # width of the soft boundary
-    sarray = np.zeros(x.shape)
-    sarray[(ubound - x) * (x - lbound) >= 0] = 1.0
-
-    in_left_boundary = (lbound - x) * (x - slbound) > 0
-    in_right_boundary = (subound - x) * (x - ubound) > 0
-
-    sarray[in_left_boundary] = 1 - (lbound - x[in_left_boundary]) / swidth
-    sarray[in_right_boundary] = 1 - (x[in_right_boundary] - ubound) / swidth
-    return sarray
-
-
 class AreaBase(MeasurementMethodBase, ABC):
     @classmethod
     def get_units(cls, ndim):

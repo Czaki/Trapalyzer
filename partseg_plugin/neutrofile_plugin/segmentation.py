@@ -1,14 +1,17 @@
 import operator
 import typing
+from abc import ABC
 from copy import deepcopy
+from itertools import product
 from typing import Callable
 
 import numpy as np
 import SimpleITK as sitk
 
 from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
+from PartSegCore.analysis.measurement_calculation import Diameter
 from PartSegCore.channel_class import Channel
-from PartSegCore.segmentation import RestartableAlgorithm, SegmentationAlgorithm
+from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
 from PartSegCore.segmentation.threshold import BaseThreshold, ManualThreshold, threshold_dict
 
@@ -20,9 +23,11 @@ BACTERIA_VAL = 3
 OTHER_VAL = 4
 NET_VAL = 5
 LABELING_NAME = "labeling"
+COMPONENT_SCORE_LIST = ["Alive", "Dead", "Bacteria"]
+PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness"]
 
 
-class TrapezoidNeutrofileSegmentation(SegmentationAlgorithm):
+class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
     @classmethod
     def support_time(cls):
         return False
@@ -31,8 +36,77 @@ class TrapezoidNeutrofileSegmentation(SegmentationAlgorithm):
     def support_z(cls):
         return False
 
+    def _calculate_mask(self, channel, threshold_name):
+        thr: BaseThreshold = threshold_dict[self.new_parameters[threshold_name]["name"]]
+        mask, thr_val = thr.calculate_mask(
+            channel, self.mask, self.new_parameters[threshold_name]["values"], operator.gt
+        )
+        return mask, thr_val
+
+    @staticmethod
+    def _calc_components(arr, min_size):
+        return sitk.GetArrayFromImage(
+            sitk.RelabelComponent(
+                sitk.ConnectedComponent(sitk.GetImageFromArray(arr)),
+                min_size,
+            )
+        )
+
+
+class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
-        pass
+        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
+        inner_dna_mask, thr_val = self._calculate_mask(inner_dna_channel, "inner_threshold")
+        outer_dna_mask, dead_thr_val = self._calculate_mask(outer_dna_channel, "outer_threshold")
+        outer_dna_components = self._calc_components(outer_dna_mask, self.new_parameters["net_size"])
+        inner_dna_mask[outer_dna_components > 0] = 0
+        size_param_array = [self.new_parameters[x.lower() + "_voxels"] for x in COMPONENT_SCORE_LIST]
+        min_object_size = max(
+            5, min(x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] for x in size_param_array)
+        )
+        print("Aaaa", inner_dna_mask.dtype, min_object_size, type(min_object_size))
+        inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
+
+        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, outer_dna_mask)
+
+        result_labeling[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + (NET_VAL - 1)
+        max_component = inner_dna_components.max()
+        inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
+
+        return SegmentationResult(
+            inner_dna_components,
+            self.get_segmentation_profile(),
+            alternative_representation={LABELING_NAME: result_labeling},
+            roi_annotation=roi_annotation,
+        )
+
+    def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
+        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        annotation = {}
+        labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
+        for val in np.unique(inner_dna_components):
+            if val == 0:
+                continue
+            component = np.array(inner_dna_components == val)
+            diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
+            voxels = np.count_nonzero(component)
+            if diameter == 0:
+                print("ccc", val, diameter, voxels)
+                continue
+            data_dict = {
+                "voxels": voxels,
+                "brightness": np.mean(inner_dna_channel[component]),
+                "roundness": voxels / (diameter ** 2 / 4),
+            }
+            annotation[val] = {
+                f"{prefix} {suffix}": trapezoid_score_function(
+                    data_dict[suffix], **self.new_parameters[f"{prefix.lower()}_{suffix}"]
+                )
+                for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
+            }
+        labeling[inner_dna_components > 0] = ALIVE_VAL
+        return labeling, annotation
 
     def get_info_text(self):
         return ""
@@ -46,23 +120,40 @@ class TrapezoidNeutrofileSegmentation(SegmentationAlgorithm):
 
     @classmethod
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-        return [
+        initial = [
             AlgorithmProperty(
-                "alive_volume",
-                "Alive volume",
-                {"lower_bound": 10, "upper_bound": 500, "softness": 0.5},
+                f"{prefix.lower()}_{suffix}",
+                f"{prefix} {suffix}",
+                {"lower_bound": 10, "upper_bound": 50, "softness": 0.5},
                 property_type=TrapezoidWidget,
-            ),
-            AlgorithmProperty(
-                "alive_brightness",
-                "Alive br",
-                {"lower_bound": 10, "upper_bound": 500, "softness": 0.5},
-                property_type=TrapezoidWidget,
-            ),
+            )
+            for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
         ]
 
+        thresholds = [
+            AlgorithmProperty("inner_dna", "Inner DNA", 1, property_type=Channel),
+            AlgorithmProperty(
+                "inner_threshold",
+                "Inner threshold",
+                next(iter(threshold_dict.keys())),
+                possible_values=threshold_dict,
+                property_type=AlgorithmDescribeBase,
+            ),
+            AlgorithmProperty("outer_dna", "Outer DNA", 1, property_type=Channel),
+            AlgorithmProperty(
+                "outer_threshold",
+                "Outer Threshold",
+                next(iter(threshold_dict.keys())),
+                possible_values=threshold_dict,
+                property_type=AlgorithmDescribeBase,
+            ),
+            AlgorithmProperty("net_size", "net size (px)", 500, (0, 10 ** 6), 100),
+        ]
 
-class NeutrofileSegmentation(RestartableAlgorithm):
+        return thresholds + initial
+
+
+class NeutrofileSegmentation(NeutrofileSegmentationBase):
     def __init__(self):
         super().__init__()
         self.good, self.bad, self.nets, self.bacteria, self.net_area = 0, 0, 0, 0, 0
@@ -299,3 +390,27 @@ class NeutrofileOnlySegmentation(RestartableAlgorithm):
     @classmethod
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
         pass
+
+
+def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
+    """
+    Compute a score on a scale from 0 to 1 that indicate whether values from x belong
+    to the interval (lbound, ubound) with a softened boundary.
+    If a point lies inside the interval, its score is equal to 1.
+    If the point is further away than the interval length multiplied by the softness parameter,
+    its score is equal to zero.
+    Otherwise the score is given by a linear function.
+    """
+    interval_width = upper_bound - lower_bound
+    subound = upper_bound + softness * interval_width
+    slbound = lower_bound - softness * interval_width
+    swidth = softness * interval_width  # width of the soft boundary
+    sarray = np.zeros(x.shape)
+    sarray[(upper_bound - x) * (x - lower_bound) >= 0] = 1.0
+
+    in_left_boundary = (lower_bound - x) * (x - slbound) > 0
+    in_right_boundary = (subound - x) * (x - upper_bound) > 0
+
+    sarray[in_left_boundary] = 1 - (lower_bound - x[in_left_boundary]) / swidth
+    sarray[in_right_boundary] = 1 - (x[in_right_boundary] - upper_bound) / swidth
+    return sarray
