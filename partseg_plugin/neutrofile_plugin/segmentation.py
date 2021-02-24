@@ -391,7 +391,6 @@ class NeutrofileOnlySegmentation(RestartableAlgorithm):
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
         pass
 
-
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     Compute a score on a scale from 0 to 1 that indicate whether values from x belong
@@ -405,12 +404,11 @@ def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     subound = upper_bound + softness * interval_width
     slbound = lower_bound - softness * interval_width
     swidth = softness * interval_width  # width of the soft boundary
-    sarray = np.zeros(x.shape)
-    sarray[(upper_bound - x) * (x - lower_bound) >= 0] = 1.0
-
-    in_left_boundary = (lower_bound - x) * (x - slbound) > 0
-    in_right_boundary = (subound - x) * (x - upper_bound) > 0
-
-    sarray[in_left_boundary] = 1 - (lower_bound - x[in_left_boundary]) / swidth
-    sarray[in_right_boundary] = 1 - (x[in_right_boundary] - upper_bound) / swidth
-    return sarray
+    if lower_bound <= x <= upper_bound:
+        return 1.
+    elif x <= slbound or x >= subound:
+        return 0.
+    elif slbound <= x <= lower_bound:
+        return 1. - (lower_bound - x) / swidth
+    elif upper_bound <= x <= subound:
+        return 1. - (x - upper_bound) / swidth
