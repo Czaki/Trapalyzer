@@ -3,6 +3,7 @@ import typing
 from abc import ABC
 from copy import deepcopy
 from itertools import product
+from math import pi
 from typing import Callable
 
 import numpy as np
@@ -23,7 +24,8 @@ BACTERIA_VAL = 3
 OTHER_VAL = 4
 NET_VAL = 5
 LABELING_NAME = "labeling"
-COMPONENT_SCORE_LIST = ["Alive", "Dead", "Bacteria"]
+COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
+COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
 PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness"]
 
 
@@ -67,18 +69,26 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         )
         print("Aaaa", inner_dna_mask.dtype, min_object_size, type(min_object_size))
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
+        print("max comp", np.max(inner_dna_components))
 
         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, outer_dna_mask)
 
         result_labeling[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + (NET_VAL - 1)
         max_component = inner_dna_components.max()
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
+        for value in np.unique(inner_dna_components[outer_dna_components > 0]):
+            roi_annotation[value] = {"Name": "Net", "Volume": np.count_nonzero(inner_dna_components == value)}
 
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
             alternative_representation={LABELING_NAME: result_labeling},
             roi_annotation=roi_annotation,
+            additional_layers={
+                "inner_mask": AdditionalLayerDescription(
+                    inner_dna_mask.astype(np.uint8).reshape((1,) + inner_dna_mask.shape), "labels", "inner_mask"
+                )
+            },
         )
 
     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
@@ -97,15 +107,32 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             data_dict = {
                 "voxels": voxels,
                 "brightness": np.mean(inner_dna_channel[component]),
-                "roundness": voxels / (diameter ** 2 / 4),
+                "roundness": voxels / ((diameter ** 2 / 4) * pi),
             }
-            annotation[val] = {
-                f"{prefix} {suffix}": trapezoid_score_function(
-                    data_dict[suffix], **self.new_parameters[f"{prefix.lower()}_{suffix}"]
-                )
-                for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
-            }
-        labeling[inner_dna_components > 0] = ALIVE_VAL
+            annotation[val] = dict(
+                {"component_id": val},
+                **data_dict,
+                **{
+                    f"{prefix} {suffix}": trapezoid_score_function(
+                        data_dict[suffix], **self.new_parameters[f"{prefix.lower()}_{suffix}"]
+                    )
+                    for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
+                },
+            )
+            score_list = []
+            for component_name in COMPONENT_SCORE_LIST:
+                score = 1
+                for parameter in PARAMETER_TYPE_LIST:
+                    score *= annotation[val][f"{component_name} {parameter}"]
+                score_list.append((score, component_name))
+            for el in score_list:
+                annotation[val][el[1] + "_score"] = el[0]
+            score_list = sorted(score_list)
+            if score_list[-1][0] < 0.9:
+                labeling[component] = OTHER_VAL
+            else:
+                labeling[component] = COMPONENT_DICT[score_list[-1][1]]
+
         return labeling, annotation
 
     def get_info_text(self):
@@ -391,6 +418,7 @@ class NeutrofileOnlySegmentation(RestartableAlgorithm):
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
         pass
 
+
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     Compute a score on a scale from 0 to 1 that indicate whether values from x belong
@@ -405,10 +433,10 @@ def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     slbound = lower_bound - softness * interval_width
     swidth = softness * interval_width  # width of the soft boundary
     if lower_bound <= x <= upper_bound:
-        return 1.
+        return 1.0
     elif x <= slbound or x >= subound:
-        return 0.
+        return 0.0
     elif slbound <= x <= lower_bound:
-        return 1. - (lower_bound - x) / swidth
+        return 1.0 - (lower_bound - x) / swidth
     elif upper_bound <= x <= subound:
-        return 1. - (x - upper_bound) / swidth
+        return 1.0 - (x - upper_bound) / swidth
