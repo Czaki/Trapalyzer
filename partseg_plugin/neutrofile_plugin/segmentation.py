@@ -56,6 +56,12 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
 
 
 class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
+        self.nets = 0
+        self.other = 0
+
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
@@ -64,14 +70,17 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         outer_dna_components = self._calc_components(outer_dna_mask, self.new_parameters["net_size"])
         inner_dna_mask[outer_dna_components > 0] = 0
         size_param_array = [self.new_parameters[x.lower() + "_voxels"] for x in COMPONENT_SCORE_LIST]
-        min_object_size = max(
-            5, min(x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] for x in size_param_array)
+        min_object_size = int(
+            max(
+                5,
+                min(x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] for x in size_param_array),
+            )
         )
-        print("Aaaa", inner_dna_mask.dtype, min_object_size, type(min_object_size))
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
-        print("max comp", np.max(inner_dna_components))
 
         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, outer_dna_mask)
+
+        self.nets = len(np.unique(outer_dna_components[outer_dna_components > 0]))
 
         result_labeling[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + (NET_VAL - 1)
         max_component = inner_dna_components.max()
@@ -85,9 +94,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             alternative_representation={LABELING_NAME: result_labeling},
             roi_annotation=roi_annotation,
             additional_layers={
-                "inner_mask": AdditionalLayerDescription(
-                    inner_dna_mask.astype(np.uint8).reshape((1,) + inner_dna_mask.shape), "labels", "inner_mask"
-                )
+                "inner_mask": AdditionalLayerDescription(inner_dna_mask.astype(np.uint8), "labels", "inner_mask")
             },
         )
 
@@ -128,15 +135,23 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             for el in score_list:
                 annotation[val][el[1] + "_score"] = el[0]
             score_list = sorted(score_list)
-            if score_list[-1][0] < 0.9:
+            if (
+                score_list[-1][0] < self.new_parameters["minimum_score"]
+                or score_list[-2][0] > self.new_parameters["maximum_other"]
+            ):
                 labeling[component] = OTHER_VAL
+                self.other += 1
             else:
                 labeling[component] = COMPONENT_DICT[score_list[-1][1]]
+                self.count_dict[COMPONENT_DICT[score_list[-1][1]]] += 1
 
         return labeling, annotation
 
     def get_info_text(self):
-        return ""
+        return (
+            f"Alive: {self.count_dict[ALIVE_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
+            f"Nets: {self.nets}, Other: {self.other}"
+        )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
         return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
@@ -155,6 +170,9 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 property_type=TrapezoidWidget,
             )
             for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
+        ] + [
+            AlgorithmProperty("minimum_score", "Minimum score", 0.8),
+            AlgorithmProperty("maximum_other", "Maximum other score", 0.4),
         ]
 
         thresholds = [

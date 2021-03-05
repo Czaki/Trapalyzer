@@ -63,6 +63,8 @@ class NetArea(AreaBase):
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
+        kwargs = dict(kwargs)
+        del kwargs["area_array"]
         return measurement_calculation.Volume.calculate_property(area_array >= NET_VAL, **kwargs)
 
 
@@ -72,6 +74,8 @@ class BacteriaArea(AreaBase):
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
+        kwargs = dict(kwargs)
+        del kwargs["area_array"]
         return measurement_calculation.Volume.calculate_property(area_array == BACTERIA_VAL, **kwargs)
 
 
@@ -87,6 +91,8 @@ class NetVoxels(AreaBase):
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
+        kwargs = dict(kwargs)
+        del kwargs["area_array"]
         return measurement_calculation.Voxels.calculate_property(area_array >= NET_VAL, **kwargs)
 
 
@@ -96,6 +102,8 @@ class BacteriaVoxels(AreaBase):
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
+        kwargs = dict(kwargs)
+        del kwargs["area_array"]
         return measurement_calculation.Voxels.calculate_property(area_array == BACTERIA_VAL, **kwargs)
 
 
