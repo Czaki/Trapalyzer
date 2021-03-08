@@ -26,7 +26,7 @@ NET_VAL = 5
 LABELING_NAME = "labeling"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness"]
+PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness"]
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -100,6 +100,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
 
     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
         for val in np.unique(inner_dna_components):
@@ -114,6 +115,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             data_dict = {
                 "voxels": voxels,
                 "brightness": np.mean(inner_dna_channel[component]),
+                "ext. brightness": np.mean(outer_dna_channel[component]),
                 "roundness": voxels / ((diameter ** 2 / 4) * pi),
             }
             annotation[val] = dict(
