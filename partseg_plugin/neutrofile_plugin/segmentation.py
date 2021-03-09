@@ -73,7 +73,11 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         min_object_size = int(
             max(
                 5,
-                min(x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] for x in size_param_array),
+                min(
+                    x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] * 0.1
+                    for x in size_param_array
+                ),
+                self.new_parameters["minimum_size"],
             )
         )
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
@@ -175,6 +179,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         ] + [
             AlgorithmProperty("minimum_score", "Minimum score", 0.8),
             AlgorithmProperty("maximum_other", "Maximum other score", 0.4),
+            AlgorithmProperty("minimum_size", "Min component size", 40),
         ]
 
         thresholds = [
@@ -450,7 +455,7 @@ def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     interval_width = upper_bound - lower_bound
     subound = upper_bound + softness * interval_width
-    slbound = lower_bound - softness * interval_width
+    slbound = lower_bound - (softness * interval_width) * 0.1
     swidth = softness * interval_width  # width of the soft boundary
     if lower_bound <= x <= upper_bound:
         return 1.0

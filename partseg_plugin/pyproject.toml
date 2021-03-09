@@ -3,8 +3,8 @@
 requires = ["setuptools>=42.0.0", "setuptools_scm[toml]>=3.4"]  # PEP 508 specifications.
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools_scm]
-write_to = "package/PartSeg/version.py"
+#[tool.setuptools_scm]
+#write_to = "neutrofile_plugin/version.py"
 
 [tool.black]
 line-length = 120
