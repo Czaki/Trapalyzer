@@ -474,11 +474,12 @@ def gaussian_score_function(x, lbound, ubound, softness=0.5):
     """
     assert ubound >= lbound, 'ubound needs to be >= than lbound'
     interval_mean = ubound+lbound
+    interval_length = ubound - lbound
     if lbound <= x <= ubound:
         return 1.
-    sd_l = np.log(softness*lbound/interval_mean) - np.log(3) # to avoid raising to small powers
+    sd_l = np.log(softness*interval_length*lbound/interval_mean) - np.log(3) # to avoid raising to small powers
     sd_l = np.exp(sd_l)
-    sd_u = np.log(softness*ubound/interval_mean)  - np.log(3)
+    sd_u = np.log(softness*interval_length*ubound/interval_mean)  - np.log(3)
     sd_u = np.exp(sd_u)
     if x <= lbound - 3.5*sd_l or x >= ubound + 3.5*sd_u:
         return 0.
@@ -497,10 +498,11 @@ def sine_score_function(x, lbound, ubound, softness=0.5):
     """
     assert ubound >= lbound, 'ubound needs to be >= than lbound'
     interval_mean = ubound+lbound
+    interval_length = ubound - lbound
     if lbound <= x <= ubound:
         return 1.
-    extension_span_left = softness*lbound/interval_mean
-    extension_span_right = softness*ubound/interval_mean
+    extension_span_left = softness*interval_length*lbound/interval_mean
+    extension_span_right = softness*interval_length*ubound/interval_mean
     if x <= lbound - extension_span_left or x >= ubound + extension_span_right:
         return 0.
     if lbound - extension_span_left <= x <= lbound:
