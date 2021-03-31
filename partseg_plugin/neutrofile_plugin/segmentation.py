@@ -23,7 +23,7 @@ DEAD_VAL = 2
 BACTERIA_VAL = 3
 OTHER_VAL = 4
 NET_VAL = 5
-LABELING_NAME = "labeling"
+LABELING_NAME = "Labeling"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
 PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness"]
@@ -74,7 +74,11 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             max(
                 5,
                 min(
-                    x["lower_bound"] - (x["upper_bound"] - x["lower_bound"]) * x["softness"] * 0.1
+                    x["lower_bound"]
+                    - (x["upper_bound"] - x["lower_bound"])
+                    * self.new_parameters["softness"]
+                    * x["lower_bound"]
+                    / (x["upper_bound"] - x["lower_bound"])
                     for x in size_param_array
                 ),
                 self.new_parameters["minimum_size"],
@@ -91,11 +95,15 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
             roi_annotation[value] = {"Name": "Net", "Volume": np.count_nonzero(inner_dna_components == value)}
-
+        alternative_representation = {LABELING_NAME: result_labeling}
+        for name, val in COMPONENT_DICT.items():
+            alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
+        alternative_representation["Nets"] = (result_labeling >= NET_VAL).astype(np.uint8)
+        alternative_representation["Others"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
-            alternative_representation={LABELING_NAME: result_labeling},
+            alternative_representation=alternative_representation,
             roi_annotation=roi_annotation,
             additional_layers={
                 "inner_mask": AdditionalLayerDescription(inner_dna_mask.astype(np.uint8), "labels", "inner_mask")
@@ -123,11 +131,13 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 "roundness": voxels / ((diameter ** 2 / 4) * pi),
             }
             annotation[val] = dict(
-                {"component_id": val},
+                {"component_id": val, "category": "Unknown"},
                 **data_dict,
                 **{
                     f"{prefix} {suffix}": sine_score_function(
-                        data_dict[suffix], **self.new_parameters[f"{prefix.lower()}_{suffix}"]
+                        data_dict[suffix],
+                        softness=self.new_parameters["softness"],
+                        **self.new_parameters[f"{prefix.lower()}_{suffix}"],
                     )
                     for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
                 },
@@ -150,6 +160,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             else:
                 labeling[component] = COMPONENT_DICT[score_list[-1][1]]
                 self.count_dict[COMPONENT_DICT[score_list[-1][1]]] += 1
+                annotation[val]["category"] = score_list[-1][1]
 
         return labeling, annotation
 
@@ -172,14 +183,15 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             AlgorithmProperty(
                 f"{prefix.lower()}_{suffix}",
                 f"{prefix} {suffix}",
-                {"lower_bound": 10, "upper_bound": 50, "softness": 0.5},
+                {"lower_bound": 10, "upper_bound": 50},
                 property_type=TrapezoidWidget,
             )
             for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
         ] + [
             AlgorithmProperty("minimum_score", "Minimum score", 0.8),
             AlgorithmProperty("maximum_other", "Maximum other score", 0.4),
-            AlgorithmProperty("minimum_size", "Min component size", 40),
+            AlgorithmProperty("minimum_size", "Min component size", 40, (1, 9999)),
+            AlgorithmProperty("softness", "Softness", 0.1, (0, 1)),
         ]
 
         thresholds = [
@@ -466,50 +478,51 @@ def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     elif upper_bound <= x <= subound:
         return 1.0 - (x - upper_bound) / swidth
 
+
 def gaussian_score_function(x, lbound, ubound, softness=0.5):
     """
     Computes a score on a scale from 0 to 1 whether x lies within the [lbound, ubound] interval.
     Fuzzified by a gaussian function.
-    Softness controls the extension of the interval. 
+    Softness controls the extension of the interval.
     """
-    assert ubound >= lbound, 'ubound needs to be >= than lbound'
-    interval_mean = ubound+lbound
+    assert ubound >= lbound, "ubound needs to be >= than lbound"
+    interval_mean = ubound + lbound
     interval_length = ubound - lbound
     if lbound <= x <= ubound:
-        return 1.
-    sd_l = np.log(softness*interval_length*lbound/interval_mean) - np.log(3) # to avoid raising to small powers
+        return 1.0
+    sd_l = np.log(softness * interval_length * lbound / interval_mean) - np.log(3)  # to avoid raising to small powers
     sd_l = np.exp(sd_l)
-    sd_u = np.log(softness*interval_length*ubound/interval_mean)  - np.log(3)
+    sd_u = np.log(softness * interval_length * ubound / interval_mean) - np.log(3)
     sd_u = np.exp(sd_u)
-    if x <= lbound - 3.5*sd_l or x >= ubound + 3.5*sd_u:
-        return 0.
-    if lbound - 3.5*sd_l <= x <= lbound:
-        logscore = -0.5*(lbound - x)**2/sd_l**2
+    if x <= lbound - 3.5 * sd_l or x >= ubound + 3.5 * sd_u:
+        return 0.0
+    if lbound - 3.5 * sd_l <= x <= lbound:
+        logscore = -0.5 * (lbound - x) ** 2 / sd_l ** 2
         return np.exp(logscore)
-    if ubound <= x <= ubound + 3.5*sd_u:
-        logscore = -0.5*(x - ubound)**2/sd_u**2
+    if ubound <= x <= ubound + 3.5 * sd_u:
+        logscore = -0.5 * (x - ubound) ** 2 / sd_u ** 2
         return np.exp(logscore)
+
 
 def sine_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     Computes a score on a scale from 0 to 1 whether x lies within the [lbound, ubound] interval.
     Extended with a sine function.
-    Softness controls the extension of the interval. 
+    Softness controls the extension of the interval.
     """
-    assert upper_bound >= lower_bound, 'upper_bound needs to be >= than lower_bound'
-    interval_mean = upper_bound+lower_bound
+    assert upper_bound >= lower_bound, "upper_bound needs to be >= than lower_bound"
+    interval_mean = upper_bound + lower_bound
     interval_length = upper_bound - lower_bound
     if lower_bound <= x <= upper_bound:
-        return 1.
-    extension_span_left = softness*interval_length*lower_bound/interval_mean
-    extension_span_right = softness*interval_length*upper_bound/interval_mean
+        return 1.0
+    extension_span_left = softness * interval_length * lower_bound / interval_mean
+    extension_span_right = softness * interval_length * upper_bound / interval_mean
     if x <= lower_bound - extension_span_left or x >= upper_bound + extension_span_right:
-        return 0.
+        return 0.0
     if lower_bound - extension_span_left <= x <= lower_bound:
-        coord_transform = 2*(x - lower_bound + extension_span_left)/extension_span_left - 1
+        coord_transform = 2 * (x - lower_bound + extension_span_left) / extension_span_left - 1
     elif upper_bound <= x <= upper_bound + extension_span_right:
-        coord_transform = 2*(x - upper_bound + extension_span_right)/extension_span_right - 1
+        coord_transform = 2 * (x - upper_bound + extension_span_right) / extension_span_right - 1
     else:
-        raise RuntimeError('Something went terribly wrong!')
-    return 0.5 + 0.5*np.sin(0.5*np.pi*coord_transform)
-        
+        raise RuntimeError("Something went terribly wrong!")
+    return 0.5 + 0.5 * np.sin(0.5 * np.pi * coord_transform)

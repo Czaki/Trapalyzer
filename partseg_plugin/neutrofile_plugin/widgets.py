@@ -17,7 +17,7 @@ class ShortCustomDoubleSpinBox(CustomDoubleSpinBox):
 
 
 class TrapezoidParametersWidget(QWidget):
-    values_changed = Signal(float, float, float)
+    values_changed = Signal(float, float)
 
     def __init__(self):
         super().__init__()
@@ -29,35 +29,27 @@ class TrapezoidParametersWidget(QWidget):
         self.upper_bound.setRange(0, 99999)
         self.upper_bound.valueChanged.connect(self._update_value)
         self.upper_bound.setToolTip("upper bound")
-        self.softness = ShortCustomDoubleSpinBox()
-        self.softness.setRange(0, 9)
-        self.softness.valueChanged.connect(self._update_value)
-        self.softness.setToolTip("softness")
         # self.setFixedWidth(250)
         layout = QHBoxLayout()
         layout.addWidget(QLabel("l:"))
         layout.addWidget(self.lower_bound)
         layout.addWidget(QLabel("u:"))
         layout.addWidget(self.upper_bound)
-        layout.addWidget(QLabel("s:"))
-        layout.addWidget(self.softness)
         self.setLayout(layout)
 
     def _update_value(self):
         # print("aaa", QApplication.instance().styleSheet())
-        self.values_changed.emit(self.lower_bound.value(), self.upper_bound.value(), self.softness.value())
+        self.values_changed.emit(self.lower_bound.value(), self.upper_bound.value())
 
     def get_value(self):
         return {
             "lower_bound": self.lower_bound.value(),
             "upper_bound": self.upper_bound.value(),
-            "softness": self.softness.value(),
         }
 
     def set_value(self, value):
         self.lower_bound.setValue(value["lower_bound"])
         self.upper_bound.setValue(value["upper_bound"])
-        self.softness.setValue(value["softness"])
 
 
 qss_file = """
