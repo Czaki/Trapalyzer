@@ -490,25 +490,25 @@ def gaussian_score_function(x, lbound, ubound, softness=0.5):
         logscore = -0.5*(x - ubound)**2/sd_u**2
         return np.exp(logscore)
 
-def sine_score_function(x, lbound, ubound, softness=0.5):
+def sine_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     Computes a score on a scale from 0 to 1 whether x lies within the [lbound, ubound] interval.
     Extended with a sine function.
     Softness controls the extension of the interval. 
     """
-    assert ubound >= lbound, 'ubound needs to be >= than lbound'
-    interval_mean = ubound+lbound
-    interval_length = ubound - lbound
-    if lbound <= x <= ubound:
+    assert upper_bound >= lower_bound, 'upper_bound needs to be >= than lower_bound'
+    interval_mean = upper_bound+lower_bound
+    interval_length = upper_bound - lower_bound
+    if lower_bound <= x <= upper_bound:
         return 1.
-    extension_span_left = softness*interval_length*lbound/interval_mean
-    extension_span_right = softness*interval_length*ubound/interval_mean
-    if x <= lbound - extension_span_left or x >= ubound + extension_span_right:
+    extension_span_left = softness*interval_length*lower_bound/interval_mean
+    extension_span_right = softness*interval_length*upper_bound/interval_mean
+    if x <= lower_bound - extension_span_left or x >= upper_bound + extension_span_right:
         return 0.
-    if lbound - extension_span_left <= x <= lbound:
-        coord_transform = 2*(x - lbound + extension_span_left)/extension_span_left - 1
-    elif ubound <= x <= ubound + extension_span_right:
-        coord_transform = 2*(x - ubound + extension_span_right)/extension_span_right - 1
+    if lower_bound - extension_span_left <= x <= lower_bound:
+        coord_transform = 2*(x - lower_bound + extension_span_left)/extension_span_left - 1
+    elif upper_bound <= x <= upper_bound + extension_span_right:
+        coord_transform = 2*(x - upper_bound + extension_span_right)/extension_span_right - 1
     else:
         raise RuntimeError('Something went terribly wrong!')
     return 0.5 + 0.5*np.sin(0.5*np.pi*coord_transform)
