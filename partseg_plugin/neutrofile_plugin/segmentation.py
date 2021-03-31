@@ -126,7 +126,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 {"component_id": val},
                 **data_dict,
                 **{
-                    f"{prefix} {suffix}": trapezoid_score_function(
+                    f"{prefix} {suffix}": sine_score_function(
                         data_dict[suffix], **self.new_parameters[f"{prefix.lower()}_{suffix}"]
                     )
                     for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
@@ -465,3 +465,49 @@ def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
         return 1.0 - (lower_bound - x) / swidth
     elif upper_bound <= x <= subound:
         return 1.0 - (x - upper_bound) / swidth
+
+def gaussian_score_function(x, lbound, ubound, softness=0.5):
+    """
+    Computes a score on a scale from 0 to 1 whether x lies within the [lbound, ubound] interval.
+    Fuzzified by a gaussian function.
+    Softness controls the extension of the interval. 
+    """
+    assert ubound >= lbound, 'ubound needs to be >= than lbound'
+    interval_mean = ubound+lbound
+    if lbound <= x <= ubound:
+        return 1.
+    sd_l = np.log(softness*lbound/interval_mean) - np.log(3) # to avoid raising to small powers
+    sd_l = np.exp(sd_l)
+    sd_u = np.log(softness*ubound/interval_mean)  - np.log(3)
+    sd_u = np.exp(sd_u)
+    if x <= lbound - 3.5*sd_l or x >= ubound + 3.5*sd_u:
+        return 0.
+    if lbound - 3.5*sd_l <= x <= lbound:
+        logscore = -0.5*(lbound - x)**2/sd_l**2
+        return np.exp(logscore)
+    if ubound <= x <= ubound + 3.5*sd_u:
+        logscore = -0.5*(x - ubound)**2/sd_u**2
+        return np.exp(logscore)
+
+def sine_score_function(x, lbound, ubound, softness=0.5):
+    """
+    Computes a score on a scale from 0 to 1 whether x lies within the [lbound, ubound] interval.
+    Extended with a sine function.
+    Softness controls the extension of the interval. 
+    """
+    assert ubound >= lbound, 'ubound needs to be >= than lbound'
+    interval_mean = ubound+lbound
+    if lbound <= x <= ubound:
+        return 1.
+    extension_span_left = softness*lbound/interval_mean
+    extension_span_right = softness*ubound/interval_mean
+    if x <= lbound - extension_span_left or x >= ubound + extension_span_right:
+        return 0.
+    if lbound - extension_span_left <= x <= lbound:
+        coord_transform = 2*(x - lbound + extension_span_left)/extension_span_left - 1
+    elif ubound <= x <= ubound + extension_span_right:
+        coord_transform = 2*(x - ubound + extension_span_right)/extension_span_right - 1
+    else:
+        raise RuntimeError('Something went terribly wrong!')
+    return 0.5 + 0.5*np.sin(0.5*np.pi*coord_transform)
+        
