@@ -25,6 +25,7 @@ BACTERIA_VAL = 3
 OTHER_VAL = 4
 NET_VAL = 5
 LABELING_NAME = "Labeling"
+SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
 PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness"]
@@ -162,7 +163,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                     score *= annotation[val][f"{component_name} {parameter}"]
                 score_list.append((score, component_name))
             for el in score_list:
-                annotation[val][el[1] + "_score"] = el[0]
+                annotation[val][el[1] + SCORE_SUFFIX] = el[0]
             score_list = sorted(score_list)
             if (
                 score_list[-1][0] < self.new_parameters["minimum_score"]

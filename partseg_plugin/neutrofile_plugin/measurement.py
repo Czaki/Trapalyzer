@@ -5,10 +5,20 @@ import numpy as np
 import SimpleITK as sitk
 from sympy import symbols
 
+from PartSegCore.algorithm_describe_base import AlgorithmProperty
 from PartSegCore.analysis import measurement_calculation
 from PartSegCore.analysis.measurement_base import AreaType, Leaf, MeasurementMethodBase, PerComponent
 
-from .segmentation import ALIVE_VAL, BACTERIA_VAL, DEAD_VAL, LABELING_NAME, NET_VAL, OTHER_VAL
+from .segmentation import (
+    ALIVE_VAL,
+    BACTERIA_VAL,
+    COMPONENT_DICT,
+    DEAD_VAL,
+    LABELING_NAME,
+    NET_VAL,
+    OTHER_VAL,
+    SCORE_SUFFIX,
+)
 
 
 def count_components(area_array: Union[np.ndarray, bool]) -> int:
@@ -55,6 +65,27 @@ class ClassifyNeutrofile(MeasurementMethodBase, ABC):
         if numbers[0] >= NET_VAL:
             return "Neutrofile net"
         raise ValueError(f"Component {np.unique(labels)} cannot be classified")
+
+
+class NeutrofileScore(MeasurementMethodBase):
+    text_info = "Get score", "Get score for given type of components"
+
+    @classmethod
+    def get_units(cls, ndim):
+        return symbols("Text")
+
+    @classmethod
+    def get_fields(cls):
+        names = [x + SCORE_SUFFIX for x in COMPONENT_DICT]
+        return [AlgorithmProperty("score_type", "Score type", names[0], possible_values=names)]
+
+    @classmethod
+    def get_starting_leaf(cls):
+        return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.Yes)
+
+    @staticmethod
+    def calculate_property(roi_annotation, _component_num, score_type, **kwargs):
+        return roi_annotation[_component_num].get(score_type)
 
 
 class NetArea(AreaBase):
@@ -170,7 +201,7 @@ class OtherCount(CountBase):
 
 
 class BacteriaCount(CountBase):
-    text_info = "Bacteria count", "Count groups in neutrofiles"
+    text_info = "Bacteria groups count", "Count groups in neutrofiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
