@@ -14,6 +14,7 @@ from PartSegCore.analysis.measurement_calculation import Diameter
 from PartSegCore.channel_class import Channel
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
+from PartSegCore.segmentation.noise_filtering import noise_filtering_dict
 from PartSegCore.segmentation.threshold import BaseThreshold, ManualThreshold, threshold_dict
 
 from .widgets import TrapezoidWidget
@@ -67,9 +68,18 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.nets = 0
         self.other = 0
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
+        cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
+            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
+        )
+        inner_dna_mask, thr_val = self._calculate_mask(cleaned_inner, "inner_threshold")
+
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        inner_dna_mask, thr_val = self._calculate_mask(inner_dna_channel, "inner_threshold")
-        outer_dna_mask, dead_thr_val = self._calculate_mask(outer_dna_channel, "outer_threshold")
+        outer_noise_filtering_parameters = self.new_parameters["outer_dna_noise_filtering"]
+        cleaned_outer = noise_filtering_dict[outer_noise_filtering_parameters["name"]].noise_filter(
+            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
+        )
+        outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
         outer_dna_components = self._calc_components(outer_dna_mask, self.new_parameters["net_size"])
         inner_dna_mask[outer_dna_components > 0] = 0
         size_param_array = [self.new_parameters[x.lower() + "_voxels"] for x in COMPONENT_SCORE_LIST]
@@ -200,6 +210,13 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         thresholds = [
             AlgorithmProperty("inner_dna", "Inner DNA", 1, property_type=Channel),
             AlgorithmProperty(
+                "inner_dna_noise_filtering",
+                "Filter inner",
+                next(iter(noise_filtering_dict.keys())),
+                possible_values=noise_filtering_dict,
+                value_type=AlgorithmDescribeBase,
+            ),
+            AlgorithmProperty(
                 "inner_threshold",
                 "Inner threshold",
                 next(iter(threshold_dict.keys())),
@@ -207,6 +224,13 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 property_type=AlgorithmDescribeBase,
             ),
             AlgorithmProperty("outer_dna", "Outer DNA", 1, property_type=Channel),
+            AlgorithmProperty(
+                "outer_dna_noise_filtering",
+                "Filter outer",
+                next(iter(noise_filtering_dict.keys())),
+                possible_values=noise_filtering_dict,
+                value_type=AlgorithmDescribeBase,
+            ),
             AlgorithmProperty(
                 "outer_threshold",
                 "Outer Threshold",
