@@ -63,6 +63,9 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.other = 0
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
+        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
+        self.nets = 0
+        self.other = 0
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
         inner_dna_mask, thr_val = self._calculate_mask(inner_dna_channel, "inner_threshold")
