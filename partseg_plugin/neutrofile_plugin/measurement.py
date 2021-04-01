@@ -8,7 +8,7 @@ from sympy import symbols
 from PartSegCore.analysis import measurement_calculation
 from PartSegCore.analysis.measurement_base import AreaType, Leaf, MeasurementMethodBase, PerComponent
 
-from .segmentation import ALIVE_VAL, BACTERIA_VAL, DEAD_VAL, LABELING_NAME, NET_VAL
+from .segmentation import ALIVE_VAL, BACTERIA_VAL, DEAD_VAL, LABELING_NAME, NET_VAL, OTHER_VAL
 
 
 def count_components(area_array: Union[np.ndarray, bool]) -> int:
@@ -158,6 +158,15 @@ class DeadCount(CountBase):
     def calculate_property(cls, roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
         return count_components(area_array == DEAD_VAL)
+
+
+class OtherCount(CountBase):
+    text_info = "Other components count", "Count other components in segmentation"
+
+    @classmethod
+    def calculate_property(cls, roi_alternative, **kwargs):
+        area_array = roi_alternative[LABELING_NAME]
+        return count_components(area_array == OTHER_VAL)
 
 
 class BacteriaCount(CountBase):
