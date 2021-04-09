@@ -1,5 +1,6 @@
 from napari_plugin_engine import napari_hook_implementation
 from neutrofile_plugin.napari_functions import count_size
+from neutrofile_plugin.segmentation import laplacian_estimate
 
 try:
     # noinspection PyUnresolvedReferences,PyUnboundLocalVariable
@@ -36,9 +37,15 @@ def register():
     register_fun(measurement.BacteriaCount, RegisterEnum.analysis_measurement)
     register_fun(measurement.ClassifyNeutrofile, RegisterEnum.analysis_measurement)
     register_fun(measurement.NeutrofileScore, RegisterEnum.analysis_measurement)
+    register_fun(measurement.NeutrofileParameter, RegisterEnum.analysis_measurement)
     register_fun(widgets.qss_file, RegisterEnum._qss_register)
 
 
 @napari_hook_implementation(specname="napari_experimental_provide_dock_widget")
 def napari_experimental_provide_dock_widget2():
     return count_size, {"name": "Components size help"}
+
+
+@napari_hook_implementation(specname="napari_experimental_provide_function")
+def napari_experimental_provide_function3():
+    return laplacian_estimate

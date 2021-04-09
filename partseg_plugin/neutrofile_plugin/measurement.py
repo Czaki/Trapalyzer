@@ -17,6 +17,7 @@ from .segmentation import (
     LABELING_NAME,
     NET_VAL,
     OTHER_VAL,
+    PARAMETER_TYPE_LIST,
     SCORE_SUFFIX,
 )
 
@@ -64,7 +65,7 @@ class ClassifyNeutrofile(MeasurementMethodBase, ABC):
             return "Bacteria group"
         if numbers[0] >= NET_VAL:
             return "Neutrofile net"
-        raise ValueError(f"Component {np.unique(labels)} cannot be classified")
+        return "Unknown"
 
 
 class NeutrofileScore(MeasurementMethodBase):
@@ -86,6 +87,30 @@ class NeutrofileScore(MeasurementMethodBase):
     @staticmethod
     def calculate_property(roi_annotation, _component_num, score_type, **kwargs):
         return roi_annotation[_component_num].get(score_type)
+
+
+class NeutrofileParameter(MeasurementMethodBase):
+    text_info = "Get parameter", "Get parameter of components"
+
+    @classmethod
+    def get_units(cls, ndim):
+        return symbols("Text")
+
+    @classmethod
+    def get_fields(cls):
+        return [
+            AlgorithmProperty(
+                "parameter_name", "Parameter Name", PARAMETER_TYPE_LIST[0], possible_values=PARAMETER_TYPE_LIST
+            )
+        ]
+
+    @classmethod
+    def get_starting_leaf(cls):
+        return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.Yes)
+
+    @staticmethod
+    def calculate_property(roi_annotation, _component_num, parameter_name, **kwargs):
+        return roi_annotation[_component_num].get(parameter_name)
 
 
 class NetArea(AreaBase):

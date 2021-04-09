@@ -8,9 +8,12 @@ from typing import Callable
 
 import numpy as np
 import SimpleITK as sitk
+from napari.layers import Image
+from napari.types import LayerDataTuple
 
 from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
 from PartSegCore.analysis.measurement_calculation import Diameter
+from PartSegCore.autofit import density_mass_center
 from PartSegCore.channel_class import Channel
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
@@ -28,7 +31,7 @@ LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness"]
+PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness", "sharpness"]
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -127,6 +130,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
+        laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
         for val in np.unique(inner_dna_components):
@@ -135,14 +139,17 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             component = np.array(inner_dna_components == val)
             diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
             voxels = np.count_nonzero(component)
-            if diameter == 0:
-                print("ccc", val, diameter, voxels)
+            if voxels == 0 or diameter == 0:
                 continue
             data_dict = {
                 "voxels": voxels,
+                "sharpness": np.mean(laplacian_image[component]),
                 "brightness": np.mean(inner_dna_channel[component]),
+                "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(outer_dna_channel[component]),
-                "roundness": voxels / ((diameter ** 2 / 4) * pi),
+                "roundness": new_sphericity(component, self.image.voxel_size),
+                "roundness2": voxels / ((diameter ** 2 / 4) * pi),
+                "diameter": diameter,
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
@@ -471,19 +478,6 @@ class NeutrofileSegmentation(NeutrofileSegmentationBase):
         return val
 
 
-class NeutrofileOnlySegmentation(RestartableAlgorithm):
-    def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
-        pass
-
-    @classmethod
-    def get_name(cls) -> str:
-        return "Neutrofile only"
-
-    @classmethod
-    def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-        pass
-
-
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
     """
     Compute a score on a scale from 0 to 1 that indicate whether values from x belong
@@ -554,3 +548,30 @@ def sine_score_function(x, lower_bound, upper_bound, softness=0.5):
     else:
         raise RuntimeError("Something went terribly wrong!")
     return 0.5 + 0.5 * np.sin(0.5 * np.pi * coord_transform)
+
+
+def new_sphericity(component: np.ndarray, voxel_size):
+    component = component.squeeze()
+    voxel_area = np.prod(voxel_size)
+    center = np.array([density_mass_center(component, voxel_size)])
+    area = np.count_nonzero(component) * voxel_area
+    coordinates = np.transpose(np.nonzero(component)) * voxel_size - center
+    radius_square = area / np.pi
+    return np.sum(np.sum(coordinates ** 2, axis=1) <= radius_square) / (
+        area / voxel_area + np.sum(np.sum(coordinates ** 2, axis=1) > radius_square)
+    )
+
+
+def laplacian_estimate(image: Image, radius=1.30, clip_bellow_0=True) -> LayerDataTuple:
+    res = _laplacian_estimate(image.data[0], radius=radius)
+    if clip_bellow_0:
+        res[res < 0] = 0
+    res = res.reshape(image.data.shape)
+    return res, {"colormap": "magma", "scale": image.scale, "name": "Laplacian estimate"}
+
+
+def _laplacian_estimate(channel: np.ndarray, radius=1.30) -> np.ndarray:
+    data = channel.astype(np.float64).squeeze()
+    return -sitk.GetArrayFromImage(sitk.LaplacianRecursiveGaussian(sitk.GetImageFromArray(data), radius)).reshape(
+        channel.shape
+    )
