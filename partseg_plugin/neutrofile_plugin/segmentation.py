@@ -30,7 +30,7 @@ LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["voxels", "roundness", "brightness", "ext. brightness", "sharpness"]
+PARAMETER_TYPE_LIST = ["voxels", "ext. brightness", "sharpness"]  # "brightness", "roundness"
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -65,11 +65,13 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
         self.nets = 0
         self.other = 0
+        self.net_size = 0
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
         self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
         self.nets = 0
         self.other = 0
+        self.net_size = 0
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
         cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
@@ -116,6 +118,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
         alternative_representation["Nets"] = (result_labeling >= NET_VAL).astype(np.uint8)
         alternative_representation["Others"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
+        self.net_size = np.count_nonzero(alternative_representation["Nets"])
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
@@ -191,7 +194,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def get_info_text(self):
         return (
             f"Alive: {self.count_dict[ALIVE_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
-            f"Nets: {self.nets}, Other: {self.other}"
+            f"Nets: {self.nets}, Nets voxels: {self.net_size} Other: {self.other}"
         )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
