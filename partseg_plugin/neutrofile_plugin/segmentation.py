@@ -142,8 +142,11 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             component = np.array(inner_dna_components == val)
             component_border = inner_dna_components_border == val
             component_border_coords = np.nonzero(component_border)
+            # need to assert there are no holes - or get separate borders
             diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
             voxels = np.count_nonzero(component)
+            colocalization1 = np.mean((inner_dna_channel[component]-22)*(outer_dna_channel[component]-80))
+ 
             if voxels == 0 or diameter == 0:
                 continue
             data_dict = {
@@ -152,10 +155,14 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 "brightness": np.mean(inner_dna_channel[component]),
                 "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(outer_dna_channel[component]),
-                "roundness": new_sphericity(component, self.image.voxel_size),
-                "roundness2": voxels / ((diameter ** 2 / 4) * pi),
-                "diameter": diameter,
-                "border_size": component_border_coords[0].size,
+#                 "roundness": new_sphericity(component, self.image.voxel_size),
+#                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
+#                 "diameter": diameter,
+                "curvature": np.std(curvature(component_border_coords[0], component_border_coords[1])),
+#                 "border_size": component_border_coords[0].size,
+                "circumference": len(component_border_coords[0]),
+                "area to circumference": voxels/len(component_border_coords[0]),
+                "colocalization1": colocalization1
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
@@ -581,3 +588,15 @@ def _laplacian_estimate(channel: np.ndarray, radius=1.30) -> np.ndarray:
     return -sitk.GetArrayFromImage(sitk.LaplacianRecursiveGaussian(sitk.GetImageFromArray(data), radius)).reshape(
         channel.shape
     )
+
+def curvature(x, y, *args):
+    assert len(x)==len(y)
+    n = len(x)
+    k = np.zeros(n)
+    for i in range(n):
+        ddx = x[(i+1)%n] + x[(i-1)%n] - 2*x[i]
+        ddx *= n**2
+        ddy = y[(i+1)%n] + y[(i-1)%n] - 2*y[i]
+        ddy *= n**2
+        k[i] = np.sqrt(ddx**2 + ddy**2)
+    return k
