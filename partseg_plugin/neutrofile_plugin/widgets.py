@@ -31,9 +31,10 @@ class TrapezoidParametersWidget(QWidget):
         self.upper_bound.setToolTip("upper bound")
         # self.setFixedWidth(250)
         layout = QHBoxLayout()
-        layout.addWidget(QLabel("l:"))
+        layout.setContentsMargins(0, 0, 0, 0)
+        # layout.addWidget(QLabel("l:"))
         layout.addWidget(self.lower_bound)
-        layout.addWidget(QLabel("u:"))
+        layout.addWidget(QLabel("to"))
         layout.addWidget(self.upper_bound)
         self.setLayout(layout)
 

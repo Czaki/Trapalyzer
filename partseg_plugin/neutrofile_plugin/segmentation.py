@@ -1,7 +1,7 @@
 import operator
 import typing
 from abc import ABC
-from itertools import product
+from itertools import chain, product
 from math import pi
 from typing import Callable
 
@@ -22,13 +22,14 @@ from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
 from .widgets import TrapezoidWidget
 
 ALIVE_VAL = 1
-DEAD_VAL = 2
-BACTERIA_VAL = 3
-OTHER_VAL = 4
-NET_VAL = 5
+DECONDENSED_VAL = 1
+DEAD_VAL = 3
+BACTERIA_VAL = 4
+OTHER_VAL = 5
+NET_VAL = 6
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
-COMPONENT_DICT = {"Alive": ALIVE_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
+COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
 PARAMETER_TYPE_LIST = ["voxels", "ext. brightness", "sharpness"]  # "brightness", "roundness"
 
@@ -67,6 +68,48 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.other = 0
         self.net_size = 0
 
+    def classify_nets(self, outer_dna_mask, net_size, net_sharpness, net_ext_brightness):
+        nets = self._calc_components(outer_dna_mask, net_size)
+        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
+        nets_border = get_border(nets)
+        laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
+        laplacian_outer_image = _laplacian_estimate(outer_dna_channel, 1.3)
+        annotation = {}
+        i = 1
+        for val in np.unique(nets):
+            if val == 0:
+                continue
+            component = np.array(nets == val)
+            sharpness = np.mean(laplacian_image[component])
+            brightness = np.mean(inner_dna_channel[component])
+            ext_brightness = np.mean(outer_dna_channel[component])
+            if sharpness > net_sharpness or ext_brightness < net_ext_brightness:
+                nets[component] = 0
+                continue
+            component_border = nets_border == val
+            component_border_coords = np.nonzero(component_border)
+            diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
+            voxels = np.count_nonzero(component)
+            data_dict = {
+                "component_id": i,
+                "category": "Net",
+                "voxels": voxels,
+                "sharpness": sharpness,
+                "sharpness outer": np.mean(laplacian_outer_image[component]),
+                "brightness": brightness,
+                "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
+                "ext. brightness": ext_brightness,
+                "roundness": new_sphericity(component, self.image.voxel_size),
+                "roundness2": voxels / ((diameter ** 2 / 4) * pi),
+                "diameter": diameter,
+                "border_size": component_border_coords[0].size,
+            }
+            annotation[i] = data_dict
+            nets[component] = i
+            i += 1
+        return nets, annotation
+
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
         self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
         self.nets = 0
@@ -85,7 +128,12 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
         )
         outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
-        outer_dna_components = self._calc_components(outer_dna_mask, self.new_parameters["net_size"])
+        outer_dna_components, net_annotation = self.classify_nets(
+            outer_dna_mask,
+            self.new_parameters["net_size"],
+            self.new_parameters["net_sharpness"],
+            self.new_parameters["net_ext_brightness"],
+        )
         inner_dna_mask[outer_dna_components > 0] = 0
         size_param_array = [self.new_parameters[x.lower() + "_voxels"] for x in COMPONENT_SCORE_LIST]
         min_object_size = int(
@@ -108,15 +156,15 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
 
         self.nets = len(np.unique(outer_dna_components[outer_dna_components > 0]))
 
-        result_labeling[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + (NET_VAL - 1)
+        result_labeling[outer_dna_components > 0] = NET_VAL
         max_component = inner_dna_components.max()
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
-            roi_annotation[value] = {"Name": "Net", "Volume": np.count_nonzero(inner_dna_components == value)}
+            roi_annotation[value] = net_annotation[value - max_component]
         alternative_representation = {LABELING_NAME: result_labeling}
         for name, val in COMPONENT_DICT.items():
             alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
-        alternative_representation["Nets"] = (result_labeling >= NET_VAL).astype(np.uint8)
+        alternative_representation["Nets"] = (result_labeling == NET_VAL).astype(np.uint8)
         alternative_representation["Others"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
         self.net_size = np.count_nonzero(alternative_representation["Nets"])
         return SegmentationResult(
@@ -145,8 +193,8 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             # need to assert there are no holes - or get separate borders
             diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
             voxels = np.count_nonzero(component)
-            colocalization1 = np.mean((inner_dna_channel[component]-22)*(outer_dna_channel[component]-80))
- 
+            colocalization1 = np.mean((inner_dna_channel[component] - 22) * (outer_dna_channel[component] - 80))
+
             if voxels == 0 or diameter == 0:
                 continue
             data_dict = {
@@ -155,14 +203,14 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 "brightness": np.mean(inner_dna_channel[component]),
                 "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(outer_dna_channel[component]),
-#                 "roundness": new_sphericity(component, self.image.voxel_size),
-#                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
-#                 "diameter": diameter,
+                #                 "roundness": new_sphericity(component, self.image.voxel_size),
+                #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
+                #                 "diameter": diameter,
                 "curvature": np.std(curvature(component_border_coords[0], component_border_coords[1])),
-#                 "border_size": component_border_coords[0].size,
+                #                 "border_size": component_border_coords[0].size,
                 "circumference": len(component_border_coords[0]),
-                "area to circumference": voxels/len(component_border_coords[0]),
-                "colocalization1": colocalization1
+                "area to circumference": voxels / len(component_border_coords[0]),
+                "colocalization1": colocalization1,
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
@@ -213,20 +261,30 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
 
     @classmethod
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-        initial = [
-            AlgorithmProperty(
-                f"{prefix.lower()}_{suffix}",
-                f"{prefix} {suffix}",
-                {"lower_bound": 10, "upper_bound": 50},
-                property_type=TrapezoidWidget,
+        initial = list(
+            chain(
+                *[
+                    [
+                        AlgorithmProperty(
+                            f"{prefix.lower()}_{suffix}",
+                            f"{prefix} {suffix}",
+                            {"lower_bound": 10, "upper_bound": 50},
+                            property_type=TrapezoidWidget,
+                        )
+                        for suffix in PARAMETER_TYPE_LIST
+                    ]
+                    + ["-------------------"]
+                    for prefix in COMPONENT_SCORE_LIST
+                ]
             )
-            for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
-        ] + [
+        ) + [
             AlgorithmProperty("minimum_score", "Minimum score", 0.8),
             AlgorithmProperty("maximum_other", "Maximum other score", 0.4),
             AlgorithmProperty("minimum_size", "Min component size", 40, (1, 9999)),
             AlgorithmProperty("softness", "Softness", 0.1, (0, 1)),
         ]
+
+        print(initial)
 
         thresholds = [
             AlgorithmProperty("inner_dna", "Inner DNA", 1, property_type=Channel),
@@ -259,7 +317,10 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 possible_values=threshold_dict,
                 property_type=AlgorithmDescribeBase,
             ),
-            AlgorithmProperty("net_size", "net size (px)", 500, (0, 10 ** 6), 100),
+            AlgorithmProperty("net_size", "net voxels", 500, (0, 10 ** 6), 100),
+            AlgorithmProperty("net_sharpness", "net sharpness", 1.0, (0, 10 ** 2), 1),
+            AlgorithmProperty("net_ext_brightness", "net_ext_brightness", 21.0, (0, 10 ** 3), 1),
+            "-----------------------",
         ]
 
         return thresholds + initial
@@ -589,14 +650,15 @@ def _laplacian_estimate(channel: np.ndarray, radius=1.30) -> np.ndarray:
         channel.shape
     )
 
+
 def curvature(x, y, *args):
-    assert len(x)==len(y)
+    assert len(x) == len(y)
     n = len(x)
     k = np.zeros(n)
     for i in range(n):
-        ddx = x[(i+1)%n] + x[(i-1)%n] - 2*x[i]
-        ddx *= n**2
-        ddy = y[(i+1)%n] + y[(i-1)%n] - 2*y[i]
-        ddy *= n**2
-        k[i] = np.sqrt(ddx**2 + ddy**2)
+        ddx = x[(i + 1) % n] + x[(i - 1) % n] - 2 * x[i]
+        ddx *= n ** 2
+        ddy = y[(i + 1) % n] + y[(i - 1) % n] - 2 * y[i]
+        ddy *= n ** 2
+        k[i] = np.sqrt(ddx ** 2 + ddy ** 2)
     return k
