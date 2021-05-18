@@ -63,7 +63,7 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
 class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
+        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
         self.nets = 0
         self.other = 0
         self.net_size = 0
@@ -111,7 +111,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         return nets, annotation
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0}
+        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
         self.nets = 0
         self.other = 0
         self.net_size = 0
@@ -161,6 +161,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
             roi_annotation[value] = net_annotation[value - max_component]
+            roi_annotation[value]["component_id"] = value
         alternative_representation = {LABELING_NAME: result_labeling}
         for name, val in COMPONENT_DICT.items():
             alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
@@ -248,7 +249,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
 
     def get_info_text(self):
         return (
-            f"Alive: {self.count_dict[ALIVE_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
+            f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
             f"Nets: {self.nets}, Nets voxels: {self.net_size} Other: {self.other}"
         )
 
@@ -283,8 +284,6 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             AlgorithmProperty("minimum_size", "Min component size", 40, (1, 9999)),
             AlgorithmProperty("softness", "Softness", 0.1, (0, 1)),
         ]
-
-        print(initial)
 
         thresholds = [
             AlgorithmProperty("inner_dna", "Inner DNA", 1, property_type=Channel),
