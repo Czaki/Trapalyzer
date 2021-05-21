@@ -22,7 +22,7 @@ from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
 from .widgets import TrapezoidWidget
 
 ALIVE_VAL = 1
-DECONDENSED_VAL = 1
+DECONDENSED_VAL = 2
 DEAD_VAL = 3
 BACTERIA_VAL = 4
 OTHER_VAL = 5
