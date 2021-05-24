@@ -14,6 +14,7 @@ from .segmentation import (
     BACTERIA_VAL,
     COMPONENT_DICT,
     DEAD_VAL,
+    DECONDENSED_VAL,
     LABELING_NAME,
     NET_VAL,
     OTHER_VAL,
@@ -200,11 +201,16 @@ class AliveCount(CountBase):
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
-        return sitk.GetArrayFromImage(
-            sitk.RelabelComponent(
-                sitk.ConnectedComponent(sitk.GetImageFromArray(np.array(area_array == ALIVE_VAL).astype(np.uint8)))
-            )
-        ).max()
+        return count_components(area_array == ALIVE_VAL)
+
+
+class DecondensedCount(CountBase):
+    text_info = "Neutrofile decondensed count", "Count decondensed cells in neutrofiles"
+
+    @classmethod
+    def calculate_property(cls, roi_alternative, **kwargs):
+        area_array = roi_alternative[LABELING_NAME]
+        return count_components(area_array == DECONDENSED_VAL)
 
 
 class DeadCount(CountBase):
