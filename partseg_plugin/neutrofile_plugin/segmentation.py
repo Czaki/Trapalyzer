@@ -31,7 +31,7 @@ LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["voxels", "ext. brightness", "sharpness"]  # "brightness", "roundness"
+PARAMETER_TYPE_LIST = ["voxels", "ext. brightness", "LoG"]  # "brightness", "roundness"
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -68,7 +68,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.other = 0
         self.net_size = 0
 
-    def classify_nets(self, outer_dna_mask, net_size, net_sharpness, net_ext_brightness):
+    def classify_nets(self, outer_dna_mask, net_size, net_LoG, net_ext_brightness):
         nets = self._calc_components(outer_dna_mask, net_size)
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
@@ -81,10 +81,10 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             if val == 0:
                 continue
             component = np.array(nets == val)
-            sharpness = np.mean(laplacian_image[component])
+            LoG = np.mean(laplacian_image[component])
             brightness = np.mean(inner_dna_channel[component])
             ext_brightness = np.mean(outer_dna_channel[component])
-            if sharpness > net_sharpness or ext_brightness < net_ext_brightness:
+            if LoG > net_LoG or ext_brightness < net_ext_brightness:
                 nets[component] = 0
                 continue
             component_border = nets_border == val
@@ -95,8 +95,8 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 "component_id": i,
                 "category": "Net",
                 "voxels": voxels,
-                "sharpness": sharpness,
-                "sharpness outer": np.mean(laplacian_outer_image[component]),
+                "LoG": LoG,
+                "LoG outer": np.mean(laplacian_outer_image[component]),
                 "brightness": brightness,
                 "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": ext_brightness,
@@ -131,7 +131,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         outer_dna_components, net_annotation = self.classify_nets(
             outer_dna_mask,
             self.new_parameters["net_size"],
-            self.new_parameters["net_sharpness"],
+            self.new_parameters["net_LoG"],
             self.new_parameters["net_ext_brightness"],
         )
         inner_dna_mask[outer_dna_components > 0] = 0
@@ -200,7 +200,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 continue
             data_dict = {
                 "voxels": voxels,
-                "sharpness": np.mean(laplacian_image[component]),
+                "LoG": np.mean(laplacian_image[component]),
                 "brightness": np.mean(inner_dna_channel[component]),
                 "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(outer_dna_channel[component]),
@@ -317,7 +317,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 property_type=AlgorithmDescribeBase,
             ),
             AlgorithmProperty("net_size", "net voxels", 500, (0, 10 ** 6), 100),
-            AlgorithmProperty("net_sharpness", "net sharpness", 1.0, (0, 10 ** 2), 1),
+            AlgorithmProperty("net_LoG", "net LoG", 1.0, (0, 10 ** 2), 1),
             AlgorithmProperty("net_ext_brightness", "net_ext_brightness", 21.0, (0, 10 ** 3), 1),
             "-----------------------",
         ]
