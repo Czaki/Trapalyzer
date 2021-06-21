@@ -2,7 +2,6 @@ import operator
 import typing
 from abc import ABC
 from itertools import chain, product
-from math import pi
 from typing import Callable
 
 import numpy as np
@@ -11,7 +10,6 @@ from napari.layers import Image
 from napari.types import LayerDataTuple
 
 from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
-from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
 from PartSegCore.channel_class import Channel
 from PartSegCore.segmentation import RestartableAlgorithm
@@ -31,7 +29,7 @@ LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["voxels", "ext. brightness", "LoG"]  # "brightness", "roundness"
+PARAMETER_TYPE_LIST = ["pixel count", "ext. brightness", "LoG"]  # "brightness", "roundness"
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -69,10 +67,9 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         self.net_size = 0
 
     def classify_nets(self, outer_dna_mask, net_size, net_LoG, net_ext_brightness):
-        nets = self._calc_components(outer_dna_mask, net_size)
+        nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        nets_border = get_border(nets)
         laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
         laplacian_outer_image = _laplacian_estimate(outer_dna_channel, 1.3)
         annotation = {}
@@ -82,28 +79,31 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 continue
             component = np.array(nets == val)
             LoG = np.mean(laplacian_image[component])
+            LoG_score = sine_score_function(
+                LoG, softness=self.new_parameters["softness"], **self.new_parameters["net_LoG"]
+            )
             brightness = np.mean(inner_dna_channel[component])
             ext_brightness = np.mean(outer_dna_channel[component])
-            if LoG > net_LoG or ext_brightness < net_ext_brightness:
+            ext_brightness_score = sine_score_function(
+                ext_brightness, softness=self.new_parameters["softness"], **self.new_parameters["net_ext_brightness"]
+            )
+            voxels = np.count_nonzero(component)
+            voxels_score = sine_score_function(
+                voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
+            )
+
+            if voxels_score * ext_brightness_score * LoG_score < self.new_parameters["minimum_score"]:
                 nets[component] = 0
                 continue
-            component_border = nets_border == val
-            component_border_coords = np.nonzero(component_border)
-            diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
-            voxels = np.count_nonzero(component)
+
             data_dict = {
                 "component_id": i,
-                "category": "Net",
-                "voxels": voxels,
+                "category": "NET",
+                "pixel count": voxels,
                 "LoG": LoG,
                 "LoG outer": np.mean(laplacian_outer_image[component]),
                 "brightness": brightness,
-                "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": ext_brightness,
-                "roundness": new_sphericity(component, self.image.voxel_size),
-                "roundness2": voxels / ((diameter ** 2 / 4) * pi),
-                "diameter": diameter,
-                "border_size": component_border_coords[0].size,
             }
             annotation[i] = data_dict
             nets[component] = i
@@ -135,7 +135,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             self.new_parameters["net_ext_brightness"],
         )
         inner_dna_mask[outer_dna_components > 0] = 0
-        size_param_array = [self.new_parameters[x.lower() + "_voxels"] for x in COMPONENT_SCORE_LIST]
+        size_param_array = [self.new_parameters[x.lower() + "_pixel count"] for x in COMPONENT_SCORE_LIST]
         min_object_size = int(
             max(
                 5,
@@ -165,9 +165,9 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         alternative_representation = {LABELING_NAME: result_labeling}
         for name, val in COMPONENT_DICT.items():
             alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
-        alternative_representation["Nets"] = (result_labeling == NET_VAL).astype(np.uint8)
-        alternative_representation["Others"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
-        self.net_size = np.count_nonzero(alternative_representation["Nets"])
+        alternative_representation["NETs"] = (result_labeling == NET_VAL).astype(np.uint8)
+        alternative_representation["Unknown"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
+        self.net_size = np.count_nonzero(alternative_representation["NETs"])
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
@@ -184,34 +184,30 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
-        inner_dna_components_border = get_border(inner_dna_components)
+
         for val in np.unique(inner_dna_components):
             if val == 0:
                 continue
             component = np.array(inner_dna_components == val)
-            component_border = inner_dna_components_border == val
-            component_border_coords = np.nonzero(component_border)
-            # need to assert there are no holes - or get separate borders
-            diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
             voxels = np.count_nonzero(component)
             colocalization1 = np.mean((inner_dna_channel[component] - 22) * (outer_dna_channel[component] - 80))
 
-            if voxels == 0 or diameter == 0:
+            if voxels == 0:
                 continue
             data_dict = {
-                "voxels": voxels,
+                "pixel count": voxels,
                 "LoG": np.mean(laplacian_image[component]),
                 "brightness": np.mean(inner_dna_channel[component]),
-                "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
+                # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(outer_dna_channel[component]),
                 #                 "roundness": new_sphericity(component, self.image.voxel_size),
                 #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
                 #                 "diameter": diameter,
-                "curvature": np.std(curvature(component_border_coords[0], component_border_coords[1])),
+                # "curvature": np.std(curvature(component_border_coords[0], component_border_coords[1])),
                 #                 "border_size": component_border_coords[0].size,
-                "circumference": len(component_border_coords[0]),
-                "area to circumference": voxels / len(component_border_coords[0]),
-                "colocalization1": colocalization1,
+                # "circumference": len(component_border_coords[0]),
+                # "area to circumference": voxels / len(component_border_coords[0]),
+                "signal colocalization": colocalization1,
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
@@ -250,7 +246,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def get_info_text(self):
         return (
             f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
-            f"Nets: {self.nets}, Nets voxels: {self.net_size} Other: {self.other}"
+            f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
         )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
@@ -264,7 +260,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
         initial = list(
             chain(
-                *[
+                *(
                     [
                         AlgorithmProperty(
                             f"{prefix.lower()}_{suffix}",
@@ -276,49 +272,60 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                     ]
                     + ["-------------------"]
                     for prefix in COMPONENT_SCORE_LIST
-                ]
+                )
             )
         ) + [
             AlgorithmProperty("minimum_score", "Minimum score", 0.8),
-            AlgorithmProperty("maximum_other", "Maximum other score", 0.4),
-            AlgorithmProperty("minimum_size", "Min component size", 40, (1, 9999)),
-            AlgorithmProperty("softness", "Softness", 0.1, (0, 1)),
+            AlgorithmProperty("maximum_other", "Maximum competing score", 0.4),
+            AlgorithmProperty(
+                "minimum_size", "Minimum comp. pixel count", 40, (1, 9999), help_text="Minimum component pixel count"
+            ),
+            AlgorithmProperty("softness", "Error margin coeficient", 0.1, (0, 1)),
         ]
 
         thresholds = [
-            AlgorithmProperty("inner_dna", "Inner DNA", 1, property_type=Channel),
+            AlgorithmProperty("inner_dna", "All DNA channel", 1, property_type=Channel),
             AlgorithmProperty(
                 "inner_dna_noise_filtering",
-                "Filter inner",
+                "Filter type",
                 next(iter(noise_filtering_dict.keys())),
                 possible_values=noise_filtering_dict,
                 value_type=AlgorithmDescribeBase,
             ),
             AlgorithmProperty(
                 "inner_threshold",
-                "Inner threshold",
+                "Threshold type",
                 next(iter(threshold_dict.keys())),
                 possible_values=threshold_dict,
                 property_type=AlgorithmDescribeBase,
             ),
-            AlgorithmProperty("outer_dna", "Outer DNA", 1, property_type=Channel),
+            AlgorithmProperty("outer_dna", "Extracellural DNA channel", 1, property_type=Channel),
             AlgorithmProperty(
                 "outer_dna_noise_filtering",
-                "Filter outer",
+                "Filter type",
                 next(iter(noise_filtering_dict.keys())),
                 possible_values=noise_filtering_dict,
                 value_type=AlgorithmDescribeBase,
             ),
             AlgorithmProperty(
                 "outer_threshold",
-                "Outer Threshold",
+                "Threshold type",
                 next(iter(threshold_dict.keys())),
                 possible_values=threshold_dict,
                 property_type=AlgorithmDescribeBase,
             ),
-            AlgorithmProperty("net_size", "net voxels", 500, (0, 10 ** 6), 100),
-            AlgorithmProperty("net_LoG", "net LoG", 1.0, (0, 10 ** 2), 1),
-            AlgorithmProperty("net_ext_brightness", "net_ext_brightness", 21.0, (0, 10 ** 3), 1),
+            AlgorithmProperty(
+                "net_size", "NET pixel count", {"lower_bound": 850, "upper_bound": 50000}, property_type=TrapezoidWidget
+            ),
+            AlgorithmProperty(
+                "net_ext_brightness",
+                "NET extracellular brightness",
+                {"lower_bound": 21, "upper_bound": 100},
+                property_type=TrapezoidWidget,
+            ),
+            AlgorithmProperty(
+                "net_LoG", "NET LoG", {"lower_bound": 0.0, "upper_bound": 1.0}, property_type=TrapezoidWidget
+            ),
             "-----------------------",
         ]
 
@@ -640,7 +647,7 @@ def laplacian_estimate(image: Image, radius=1.30, clip_bellow_0=True) -> LayerDa
     if clip_bellow_0:
         res[res < 0] = 0
     res = res.reshape(image.data.shape)
-    return res, {"colormap": "magma", "scale": image.scale, "name": "Laplacian estimate"}
+    return LayerDataTuple((res, {"colormap": "magma", "scale": image.scale, "name": "Laplacian estimate"}))
 
 
 def _laplacian_estimate(channel: np.ndarray, radius=1.30) -> np.ndarray:
