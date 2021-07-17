@@ -22,11 +22,11 @@ class TrapezoidParametersWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.lower_bound = ShortCustomDoubleSpinBox()
-        self.lower_bound.setRange(0, 99999)
+        self.lower_bound.setRange(0, 999999)
         self.lower_bound.setToolTip("lower bound")
         self.lower_bound.valueChanged.connect(self._update_value)
         self.upper_bound = ShortCustomDoubleSpinBox()
-        self.upper_bound.setRange(0, 99999)
+        self.upper_bound.setRange(0, 999999)
         self.upper_bound.valueChanged.connect(self._update_value)
         self.upper_bound.setToolTip("upper bound")
         # self.setFixedWidth(250)

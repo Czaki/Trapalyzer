@@ -208,6 +208,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 "pixel count": voxels,
                 "LoG": np.mean(laplacian_image[component]),
                 "brightness": np.mean(cleaned_inner[component]),
+                "intensity": np.sum(cleaned_inner[component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(cleaned_outer[component]),
                 #                  "roundness": new_sphericity(component, self.image.voxel_size),
