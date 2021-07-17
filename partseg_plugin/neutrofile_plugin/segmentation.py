@@ -29,7 +29,7 @@ LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
 COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["pixel count", "ext. brightness", "LoG"]  # "brightness", "roundness"
+PARAMETER_TYPE_LIST = ["pixel count", "brightness", "ext. brightness", "LoG"]  # "brightness", "roundness"
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -180,8 +180,18 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
 
     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
+        cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
+            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
+        )
+        
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
+        outer_noise_filtering_parameters = self.new_parameters["outer_dna_noise_filtering"]
+        cleaned_outer = noise_filtering_dict[outer_noise_filtering_parameters["name"]].noise_filter(
+            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
+        )
+        
+        laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
 
@@ -190,24 +200,25 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 continue
             component = np.array(inner_dna_components == val)
             voxels = np.count_nonzero(component)
-            colocalization1 = np.mean((inner_dna_channel[component] - 22) * (outer_dna_channel[component] - 80))
+            colocalization1 = np.mean((cleaned_inner[component] - 22) * (cleaned_outer[component] - 80))
 
             if voxels == 0:
                 continue
             data_dict = {
                 "pixel count": voxels,
                 "LoG": np.mean(laplacian_image[component]),
-                "brightness": np.mean(inner_dna_channel[component]),
+                "brightness": np.mean(cleaned_inner[component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
-                "ext. brightness": np.mean(outer_dna_channel[component]),
-                #                 "roundness": new_sphericity(component, self.image.voxel_size),
+                "ext. brightness": np.mean(cleaned_outer[component]),
+                #                  "roundness": new_sphericity(component, self.image.voxel_size),
                 #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
                 #                 "diameter": diameter,
                 # "curvature": np.std(curvature(component_border_coords[0], component_border_coords[1])),
                 #                 "border_size": component_border_coords[0].size,
                 # "circumference": len(component_border_coords[0]),
                 # "area to circumference": voxels / len(component_border_coords[0]),
-                "signal colocalization": colocalization1,
+                # "signal colocalization": colocalization1,
+                # "shape": new_sphericity(component, self.image.voxel_size)/voxels
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
