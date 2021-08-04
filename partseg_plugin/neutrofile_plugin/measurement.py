@@ -42,7 +42,7 @@ class AreaBase(MeasurementMethodBase, ABC):
 
 
 class ClassifyNeutrofile(MeasurementMethodBase, ABC):
-    text_info = "Classify neutrofile", "Classify if component is alive orr dead neutrofile, bacteria group or net"
+    text_info = "Classify neutrophil", "Classify if component is alive orr dead neutrophil, bacteria group or net"
 
     @classmethod
     def get_units(cls, ndim):
@@ -59,13 +59,13 @@ class ClassifyNeutrofile(MeasurementMethodBase, ABC):
         if numbers.size != 1:
             raise ValueError(f"Component need {np.unique(labels)} to have single label not {numbers}")
         if numbers[0] == ALIVE_VAL:
-            return "Alive neutrofile"
+            return "Alive neutrophil"
         if numbers[0] == DEAD_VAL:
-            return "Dead neutrofile"
+            return "Dead neutrophil"
         if numbers[0] == BACTERIA_VAL:
             return "Bacteria group"
         if numbers[0] >= NET_VAL:
-            return "Neutrofile net"
+            return "Neutrophil net"
         return "Unknown"
 
 
@@ -115,7 +115,7 @@ class NeutrofileParameter(MeasurementMethodBase):
 
 
 class NetArea(AreaBase):
-    text_info = "Neutrofile net area", "Calculate area of neutrofile nets"
+    text_info = "Neutrophil net area", "Calculate area of neutrophil nets"
 
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
@@ -143,7 +143,7 @@ class VoxelBase(AreaBase, ABC):
 
 
 class NetVoxels(AreaBase):
-    text_info = "Neutrofile net pixels", "Calculate number of voxels of neutrofile nets"
+    text_info = "Neutrophil net pixels", "Calculate number of voxels of neutrophil nets"
 
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
@@ -165,7 +165,7 @@ class BacteriaVoxels(AreaBase):
 
 
 class NetPercent(MeasurementMethodBase):
-    text_info = "Neutrofile net percent", "Total percentage occupied by neutrofile nets"
+    text_info = "Neutrophil net percent", "Total percentage occupied by neutrophil nets"
 
     @classmethod
     def get_units(cls, ndim):
@@ -196,7 +196,7 @@ class CountBase(MeasurementMethodBase, ABC):
 
 
 class AliveCount(CountBase):
-    text_info = "Neutrofile alive count", "Count alive cells in neutrofiles"
+    text_info = "Neutrophil alive count", "Count alive cells in neutrophiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
@@ -205,7 +205,7 @@ class AliveCount(CountBase):
 
 
 class DecondensedCount(CountBase):
-    text_info = "Neutrofile decondensed count", "Count decondensed cells in neutrofiles"
+    text_info = "Decondensed neutrophil count", "Count decondensed cells in neutrophiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
@@ -214,7 +214,7 @@ class DecondensedCount(CountBase):
 
 
 class DeadCount(CountBase):
-    text_info = "Neutrofile dead count", "Count dead cells in neutrofiles"
+    text_info = "Neutrophil dead count", "Count dead cells in neutrophiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
@@ -232,7 +232,7 @@ class OtherCount(CountBase):
 
 
 class BacteriaCount(CountBase):
-    text_info = "Bacteria groups count", "Count groups in neutrofiles"
+    text_info = "Bacteria groups count", "Count groups in neutrophiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
@@ -241,7 +241,7 @@ class BacteriaCount(CountBase):
 
 
 class NetCount(CountBase):
-    text_info = "Neutrofile net count", "Count net components in neutrofiles"
+    text_info = "Neutrophil net count", "Count net components in neutrophiles"
 
     @classmethod
     def calculate_property(cls, roi_alternative, **kwargs):
