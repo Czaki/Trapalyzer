@@ -1,4 +1,4 @@
-partseg_plugin/neutrofile_plugin/_version.py
+src/Trapalyzer/_version.py
 
 # Created by https://www.gitignore.io/api/vim,python,pycharm,jupyternotebook,visualstudiocode,jupyternotebooks
 # Edit at https://www.gitignore.io/?templates=vim,python,pycharm,jupyternotebook,visualstudiocode,jupyternotebooks

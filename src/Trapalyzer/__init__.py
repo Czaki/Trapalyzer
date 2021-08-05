@@ -1,6 +1,6 @@
 from napari_plugin_engine import napari_hook_implementation
-from neutrofile_plugin.napari_functions import count_size
-from neutrofile_plugin.segmentation import laplacian_estimate
+from Trapalyzer.napari_functions import count_size
+from Trapalyzer.segmentation import laplacian_estimate
 
 try:
     # noinspection PyUnresolvedReferences,PyUnboundLocalVariable
@@ -24,7 +24,7 @@ def register():
         importlib.reload(measurement)
         importlib.reload(widgets)
     # register_fun(segmentation.NeutrofileSegmentation, RegisterEnum.analysis_algorithm)
-    register_fun(segmentation.TrapezoidNeutrofileSegmentation, RegisterEnum.analysis_algorithm)
+    register_fun(segmentation.Trapalyzer, RegisterEnum.analysis_algorithm)
     register_fun(measurement.NetArea, RegisterEnum.analysis_measurement)
     register_fun(measurement.NetVoxels, RegisterEnum.analysis_measurement)
     register_fun(measurement.BacteriaArea, RegisterEnum.analysis_measurement)
