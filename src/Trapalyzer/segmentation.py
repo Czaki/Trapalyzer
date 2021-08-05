@@ -66,7 +66,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         self.other = 0
         self.net_size = 0
 
-    def classify_nets(self, outer_dna_mask, net_size, net_LoG, net_ext_brightness):
+    def classify_nets(self, outer_dna_mask, net_size):
         nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
@@ -128,12 +128,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
             outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
         )
         outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
-        outer_dna_components, net_annotation = self.classify_nets(
-            outer_dna_mask,
-            self.new_parameters["net_size"],
-            self.new_parameters["net_LoG"],
-            self.new_parameters["net_ext_brightness"],
-        )
+        outer_dna_components, net_annotation = self.classify_nets(outer_dna_mask, self.new_parameters["net_size"])
         inner_dna_mask[outer_dna_components > 0] = 0
         size_param_array = [self.new_parameters[x.lower() + "_pixel count"] for x in COMPONENT_SCORE_LIST]
         min_object_size = int(
