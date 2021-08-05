@@ -152,7 +152,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         )
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
 
-        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, outer_dna_mask)
+        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, cleaned_inner, cleaned_outer)
 
         self.nets = len(np.unique(outer_dna_components[outer_dna_components > 0]))
 
@@ -178,19 +178,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
             },
         )
 
-    def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
-        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
-        inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
-        cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
-            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
-        )
-
-        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        outer_noise_filtering_parameters = self.new_parameters["outer_dna_noise_filtering"]
-        cleaned_outer = noise_filtering_dict[outer_noise_filtering_parameters["name"]].noise_filter(
-            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
-        )
-
+    def _classify_neutrofile(self, inner_dna_components, cleaned_inner, cleaned_outer):
         laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
@@ -239,8 +227,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 for parameter in PARAMETER_TYPE_LIST:
                     score *= annotation[val][f"{component_name} {parameter}"]
                 score_list.append((score, component_name))
-            for el in score_list:
-                annotation[val][el[1] + SCORE_SUFFIX] = el[0]
+                annotation[val][component_name + SCORE_SUFFIX] = score
+
             score_list = sorted(score_list)
             if (
                 score_list[-1][0] < self.new_parameters["minimum_score"]
@@ -277,7 +265,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                         AlgorithmProperty(
                             f"{prefix.lower()}_{suffix}",
                             f"{prefix} {suffix}",
-                            {"lower_bound": 10, "upper_bound": 50},
+                            {"lower_bound": 0, "upper_bound": 1},
                             property_type=TrapezoidWidget,
                         )
                         for suffix in PARAMETER_TYPE_LIST
