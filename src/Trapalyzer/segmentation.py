@@ -25,6 +25,7 @@ DEAD_VAL = 3
 BACTERIA_VAL = 4
 OTHER_VAL = 5
 NET_VAL = 6
+UNKNOWN_NET_VAL = 7
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
 COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
@@ -74,6 +75,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         laplacian_outer_image = _laplacian_estimate(outer_dna_channel, 1.3)
         annotation = {}
         i = 1
+        nets[nets > 0] += 1
         for val in np.unique(nets):
             if val == 0:
                 continue
@@ -93,12 +95,17 @@ class Trapalyzer(NeutrofileSegmentationBase):
             )
 
             if voxels_score * ext_brightness_score * LoG_score < self.new_parameters["minimum_score"]:
-                nets[component] = 0
-                continue
+                if not self.new_parameters["unknown_net"]:
+                    nets[component] = 0
+                    continue
+                else:
+                    category = "Unknown NET"
+            else:
+                category = "NET"
 
             data_dict = {
                 "component_id": i,
-                "category": "NET",
+                "category": category,
                 "pixel count": voxels,
                 "LoG": LoG,
                 "LoG outer": np.mean(laplacian_outer_image[component]),
@@ -149,9 +156,13 @@ class Trapalyzer(NeutrofileSegmentationBase):
 
         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, cleaned_inner, cleaned_outer)
 
-        self.nets = len(np.unique(outer_dna_components[outer_dna_components > 0]))
+        nets_components = [k for k, v in net_annotation.items() if v["category"] == "NET"]
+        unknown_net_components = [k for k, v in net_annotation.items() if v["category"] != "NET"]
 
-        result_labeling[outer_dna_components > 0] = NET_VAL
+        self.nets = len(nets_components)
+
+        result_labeling[np.isin(outer_dna_components, nets_components)] = NET_VAL
+        result_labeling[np.isin(outer_dna_components, unknown_net_components)] = UNKNOWN_NET_VAL
         max_component = inner_dna_components.max()
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
@@ -161,6 +172,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         for name, val in COMPONENT_DICT.items():
             alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
         alternative_representation["NETs"] = (result_labeling == NET_VAL).astype(np.uint8)
+        alternative_representation["NETs Unknown"] = (result_labeling == UNKNOWN_NET_VAL).astype(np.uint8)
         alternative_representation["Unknown"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
         self.net_size = np.count_nonzero(alternative_representation["NETs"])
         return SegmentationResult(
@@ -320,6 +332,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
             ),
             AlgorithmProperty(
                 "net_LoG", "NET LoG", {"lower_bound": 0.0, "upper_bound": 1.0}, property_type=TrapezoidWidget
+            ),
+            AlgorithmProperty(
+                "unknown_net", "NET unclassified components", False, help_text="If mark unknown net components"
             ),
             "-----------------------",
         ]
