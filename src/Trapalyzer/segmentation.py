@@ -1,6 +1,8 @@
 import operator
 import typing
 from abc import ABC
+from collections import Counter
+from enum import Enum
 from itertools import chain, product
 from typing import Callable
 
@@ -19,18 +21,48 @@ from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
 
 from .widgets import TrapezoidWidget
 
-ALIVE_VAL = 1
-DECONDENSED_VAL = 2
-DEAD_VAL = 3
-BACTERIA_VAL = 4
-OTHER_VAL = 5
-NET_VAL = 6
-UNKNOWN_NET_VAL = 7
+
+class NeuType(Enum):
+    PMN_neu = 1
+    DEC_neu = 2
+    NER_neu = 3
+    PMP_neu = 4
+    Bacteria = 5
+    NET = 8
+    Unknown_intra = 10
+    Unknown_extra = 11
+
+    def __str__(self):
+        return self.name.replace("_", " ")
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    @classmethod
+    def known_components(cls):
+        return (x for x in cls.__members__.values() if x.value < 10)
+
+    @classmethod
+    def neutrofile_components(cls):
+        return (x for x in cls.__members__.values() if x.value < 8)
+
+    @classmethod
+    def all_components(cls):
+        return cls.__members__.values()
+
+
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
-COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
-COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
 PARAMETER_TYPE_LIST = ["pixel count", "brightness", "ext. brightness", "LoG"]  # "brightness", "roundness"
+DESCRIPTION_DICT = {
+    NeuType.PMN_neu: "polymorphonuclear neutrophils",
+    NeuType.DEC_neu: "decondensed chromatin neutrophils",
+    NeuType.NER_neu: "ruptured nuclear envelope neutrophils",
+    NeuType.PMP_neu: "plasma membrane permeabilized neutrophils",
+    NeuType.NET: "neutrophil extracellular trap",
+    NeuType.Unknown_intra: "unclassified intracellurar component",
+    NeuType.Unknown_extra: "unclassified extracellurar component",
+}
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -62,7 +94,7 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
 class Trapalyzer(NeutrofileSegmentationBase):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
+        self.count_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
@@ -118,7 +150,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         return nets, annotation
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
+        self.count_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
@@ -137,7 +169,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
         outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
         outer_dna_components, net_annotation = self.classify_nets(outer_dna_mask, self.new_parameters["net_size"])
         inner_dna_mask[outer_dna_components > 0] = 0
-        size_param_array = [self.new_parameters[x.lower() + "_pixel count"] for x in COMPONENT_SCORE_LIST]
+        size_param_array = [
+            self.new_parameters[x.name.lower() + "_pixel count"] for x in NeuType.neutrofile_components()
+        ]
         min_object_size = int(
             max(
                 5,
@@ -159,22 +193,20 @@ class Trapalyzer(NeutrofileSegmentationBase):
         nets_components = [k for k, v in net_annotation.items() if v["category"] == "NET"]
         unknown_net_components = [k for k, v in net_annotation.items() if v["category"] != "NET"]
 
-        self.nets = len(nets_components)
+        self.count_dict[NeuType.NET] = len(nets_components)
+        self.count_dict[NeuType.Unknown_extra] = len(unknown_net_components)
 
-        result_labeling[np.isin(outer_dna_components, nets_components)] = NET_VAL
-        result_labeling[np.isin(outer_dna_components, unknown_net_components)] = UNKNOWN_NET_VAL
+        result_labeling[np.isin(outer_dna_components, nets_components)] = NeuType.NET.value
+        result_labeling[np.isin(outer_dna_components, unknown_net_components)] = NeuType.Unknown_extra.value
         max_component = inner_dna_components.max()
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
             roi_annotation[value] = net_annotation[value - max_component]
             roi_annotation[value]["component_id"] = value
         alternative_representation = {LABELING_NAME: result_labeling}
-        for name, val in COMPONENT_DICT.items():
-            alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
-        alternative_representation["NETs"] = (result_labeling == NET_VAL).astype(np.uint8)
-        alternative_representation["NETs Unknown"] = (result_labeling == UNKNOWN_NET_VAL).astype(np.uint8)
-        alternative_representation["Unknown"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
-        self.net_size = np.count_nonzero(alternative_representation["NETs"])
+        for val in NeuType.all_components():
+            alternative_representation[str(val)] = (result_labeling == val.value).astype(np.uint8) * val.value
+        self.net_size = np.count_nonzero(alternative_representation[str(NeuType.NET)])
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
@@ -223,38 +255,39 @@ class Trapalyzer(NeutrofileSegmentationBase):
                     f"{prefix} {suffix}": sine_score_function(
                         data_dict[suffix],
                         softness=self.new_parameters["softness"],
-                        **self.new_parameters[f"{prefix.lower()}_{suffix}"],
+                        **self.new_parameters[f"{prefix.name.lower()}_{suffix}"],
                     )
-                    for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
+                    for prefix, suffix in product(NeuType.neutrofile_components(), PARAMETER_TYPE_LIST)
                 },
             )
             score_list = []
-            for component_name in COMPONENT_SCORE_LIST:
+            for component_name in NeuType.neutrofile_components():
                 score = 1
                 for parameter in PARAMETER_TYPE_LIST:
                     score *= annotation[val][f"{component_name} {parameter}"]
                 score_list.append((score, component_name))
-                annotation[val][component_name + SCORE_SUFFIX] = score
+                annotation[val][str(component_name) + SCORE_SUFFIX] = score
 
             score_list = sorted(score_list)
             if (
                 score_list[-1][0] < self.new_parameters["minimum_score"]
                 or score_list[-2][0] > self.new_parameters["maximum_other"]
             ):
-                labeling[component] = OTHER_VAL
+                labeling[component] = NeuType.Unknown_intra.value
                 self.other += 1
             else:
-                labeling[component] = COMPONENT_DICT[score_list[-1][1]]
-                self.count_dict[COMPONENT_DICT[score_list[-1][1]]] += 1
-                annotation[val]["category"] = score_list[-1][1]
+                labeling[component] = score_list[-1][1].value
+                self.count_dict[score_list[-1][1]] += 1
+                annotation[val]["category"] = str(score_list[-1][1])
 
         return labeling, annotation
 
     def get_info_text(self):
-        return (
-            f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
-            f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
-        )
+        return ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
+        # return (
+        #     f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
+        #     f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
+        # )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
         return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
@@ -270,7 +303,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 *(
                     [
                         AlgorithmProperty(
-                            f"{prefix.lower()}_{suffix}",
+                            f"{prefix.name.lower()}_{suffix}",
                             f"{prefix} {suffix}",
                             {"lower_bound": 0, "upper_bound": 1},
                             property_type=TrapezoidWidget,
@@ -278,7 +311,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                         for suffix in PARAMETER_TYPE_LIST
                     ]
                     + ["-------------------"]
-                    for prefix in COMPONENT_SCORE_LIST
+                    for prefix in NeuType.neutrofile_components()
                 )
             )
         ) + [
