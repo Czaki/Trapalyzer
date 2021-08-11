@@ -53,7 +53,12 @@ class NeuType(Enum):
 
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
-PARAMETER_TYPE_LIST = ["pixel count", "brightness", "ext. brightness", "LoG"]  # "brightness", "roundness"
+PARAMETER_TYPE_LIST = [
+    "pixel count",
+    "brightness",
+    "ext. brightness",
+    "brightness gradient",
+]  # "brightness", "roundness"
 DESCRIPTION_DICT = {
     NeuType.PMN_neu: "polymorphonuclear neutrophils",
     NeuType.DEC_neu: "decondensed chromatin neutrophils",
@@ -112,9 +117,11 @@ class Trapalyzer(NeutrofileSegmentationBase):
             if val == 0:
                 continue
             component = np.array(nets == val)
-            LoG = np.mean(laplacian_image[component])
-            LoG_score = sine_score_function(
-                LoG, softness=self.new_parameters["softness"], **self.new_parameters["net_LoG"]
+            brightness_gradient = np.mean(laplacian_image[component])
+            brightness_gradient_score = sine_score_function(
+                brightness_gradient,
+                softness=self.new_parameters["softness"],
+                **self.new_parameters["net_brightness_gradient"],
             )
             brightness = np.mean(inner_dna_channel[component])
             ext_brightness = np.mean(outer_dna_channel[component])
@@ -126,7 +133,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
             )
 
-            if voxels_score * ext_brightness_score * LoG_score < self.new_parameters["minimum_score"]:
+            if voxels_score * ext_brightness_score * brightness_gradient_score < self.new_parameters["minimum_score"]:
                 if not self.new_parameters["unknown_net"]:
                     nets[component] = 0
                     continue
@@ -139,7 +146,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "component_id": i,
                 "category": category,
                 "pixel count": voxels,
-                "LoG": LoG,
+                "LoG": brightness_gradient,
                 "LoG outer": np.mean(laplacian_outer_image[component]),
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
@@ -233,7 +240,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 continue
             data_dict = {
                 "pixel count": voxels,
-                "LoG": np.mean(laplacian_image[component]),
+                "brightness gradient": np.mean(laplacian_image[component]),
                 "brightness": np.mean(cleaned_inner[component]),
                 "intensity": np.sum(cleaned_inner[component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
@@ -364,7 +371,10 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
-                "net_LoG", "NET LoG", {"lower_bound": 0.0, "upper_bound": 1.0}, property_type=TrapezoidWidget
+                "net_brightness_gradient",
+                "NET brightness gradient",
+                {"lower_bound": 0.0, "upper_bound": 1.0},
+                property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
                 "unknown_net", "NET unclassified components", False, help_text="If mark unknown net components"
