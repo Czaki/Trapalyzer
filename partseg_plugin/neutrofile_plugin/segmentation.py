@@ -16,6 +16,7 @@ from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
 from PartSegCore.segmentation.noise_filtering import noise_filtering_dict
 from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
+from PartSegCore.analysis.measurement_calculation import get_border, Diameter
 
 from .widgets import TrapezoidWidget
 
@@ -194,20 +195,26 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
+        inner_dna_components_border = get_border(inner_dna_components)
 
         for val in np.unique(inner_dna_components):
             if val == 0:
                 continue
             component = np.array(inner_dna_components == val)
+            component_border = inner_dna_components_border == val
             voxels = np.count_nonzero(component)
-            colocalization1 = np.mean((cleaned_inner[component] - 22) * (cleaned_outer[component] - 80))
+            perimeter = np.count_nonzero(component_border)
+            diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
+            # colocalization1 = np.mean((cleaned_inner[component] - 22) * (cleaned_outer[component] - 80))
 
-            if voxels == 0:
+            if perimeter == 0:
                 continue
             data_dict = {
                 "pixel count": voxels,
                 "LoG": np.mean(laplacian_image[component]),
-                "brightness": np.mean(cleaned_inner[component]),
+                "brightness": np.quantile(cleaned_inner[component], 0.9), # np.mean(cleaned_inner[component]),
+                # 'br median': np.median(cleaned_inner[component]),
+                #'br top10': np.quantile(cleaned_inner[component], 0.9),
                 "intensity": np.sum(cleaned_inner[component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.mean(cleaned_outer[component]),
@@ -219,7 +226,8 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 # "circumference": len(component_border_coords[0]),
                 # "area to circumference": voxels / len(component_border_coords[0]),
                 # "signal colocalization": colocalization1,
-                # "shape": new_sphericity(component, self.image.voxel_size)/voxels
+                "circularity": 3*np.pi*voxels/perimeter**2, # inspired by NETQUANT approach
+                "circularity2": voxels / ((diameter ** 2 / 4) * np.pi)
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
