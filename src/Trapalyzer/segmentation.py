@@ -1,6 +1,8 @@
 import operator
 import typing
 from abc import ABC
+from collections import Counter
+from enum import Enum
 from itertools import chain, product
 from typing import Callable
 
@@ -20,17 +22,53 @@ from PartSegCore.analysis.measurement_calculation import get_border, Diameter
 
 from .widgets import TrapezoidWidget
 
-ALIVE_VAL = 1
-DECONDENSED_VAL = 2
-DEAD_VAL = 3
-BACTERIA_VAL = 4
-OTHER_VAL = 5
-NET_VAL = 6
+
+class NeuType(Enum):
+    PMN_neu = 1
+    DEC_neu = 2
+    NER_neu = 3
+    PMP_neu = 4
+    Bacteria = 5
+    NET = 8
+    Unknown_intra = 10
+    Unknown_extra = 11
+
+    def __str__(self):
+        return self.name.replace("_", " ")
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    @classmethod
+    def known_components(cls):
+        return (x for x in cls.__members__.values() if x.value < 10)
+
+    @classmethod
+    def neutrofile_components(cls):
+        return (x for x in cls.__members__.values() if x.value < 8)
+
+    @classmethod
+    def all_components(cls):
+        return cls.__members__.values()
+
+
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
-COMPONENT_DICT = {"Alive": ALIVE_VAL, "Decondensed": DECONDENSED_VAL, "Dead": DEAD_VAL, "Bacteria": BACTERIA_VAL}
-COMPONENT_SCORE_LIST = list(COMPONENT_DICT.keys())
-PARAMETER_TYPE_LIST = ["pixel count", "brightness", "ext. brightness", "LoG"]  # "brightness", "roundness"
+PARAMETER_TYPE_LIST = [
+    "pixel count",
+    "brightness",
+    "ext. brightness",
+    "brightness gradient",
+]  # "brightness", "roundness"
+DESCRIPTION_DICT = {
+    NeuType.PMN_neu: "polymorphonuclear neutrophils",
+    NeuType.DEC_neu: "decondensed chromatin neutrophils",
+    NeuType.NER_neu: "ruptured nuclear envelope neutrophils",
+    NeuType.PMP_neu: "plasma membrane permeabilized neutrophils",
+    NeuType.NET: "neutrophil extracellular trap",
+    NeuType.Unknown_intra: "unclassified intracellurar component",
+    NeuType.Unknown_extra: "unclassified extracellurar component",
+}
 
 
 class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
@@ -59,15 +97,15 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
         )
 
 
-class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
+class Trapalyzer(NeutrofileSegmentationBase):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
+        self.count_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
 
-    def classify_nets(self, outer_dna_mask, net_size, net_LoG, net_ext_brightness):
+    def classify_nets(self, outer_dna_mask, net_size):
         nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
         outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
@@ -75,13 +113,16 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         laplacian_outer_image = _laplacian_estimate(outer_dna_channel, 1.3)
         annotation = {}
         i = 1
+        nets[nets > 0] += 1
         for val in np.unique(nets):
             if val == 0:
                 continue
             component = np.array(nets == val)
-            LoG = np.mean(laplacian_image[component])
-            LoG_score = sine_score_function(
-                LoG, softness=self.new_parameters["softness"], **self.new_parameters["net_LoG"]
+            brightness_gradient = np.mean(laplacian_image[component])
+            brightness_gradient_score = sine_score_function(
+                brightness_gradient,
+                softness=self.new_parameters["softness"],
+                **self.new_parameters["net_brightness_gradient"],
             )
             brightness = np.mean(inner_dna_channel[component])
             ext_brightness = np.mean(outer_dna_channel[component])
@@ -93,15 +134,20 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
             )
 
-            if voxels_score * ext_brightness_score * LoG_score < self.new_parameters["minimum_score"]:
-                nets[component] = 0
-                continue
+            if voxels_score * ext_brightness_score * brightness_gradient_score < self.new_parameters["minimum_score"]:
+                if not self.new_parameters["unknown_net"]:
+                    nets[component] = 0
+                    continue
+                else:
+                    category = "Unknown NET"
+            else:
+                category = "NET"
 
             data_dict = {
                 "component_id": i,
-                "category": "NET",
+                "category": category,
                 "pixel count": voxels,
-                "LoG": LoG,
+                "LoG": brightness_gradient,
                 "LoG outer": np.mean(laplacian_outer_image[component]),
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
@@ -112,7 +158,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         return nets, annotation
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
-        self.count_dict = {ALIVE_VAL: 0, DEAD_VAL: 0, BACTERIA_VAL: 0, DECONDENSED_VAL: 0}
+        self.count_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
@@ -129,14 +175,11 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
         )
         outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
-        outer_dna_components, net_annotation = self.classify_nets(
-            outer_dna_mask,
-            self.new_parameters["net_size"],
-            self.new_parameters["net_LoG"],
-            self.new_parameters["net_ext_brightness"],
-        )
+        outer_dna_components, net_annotation = self.classify_nets(outer_dna_mask, self.new_parameters["net_size"])
         inner_dna_mask[outer_dna_components > 0] = 0
-        size_param_array = [self.new_parameters[x.lower() + "_pixel count"] for x in COMPONENT_SCORE_LIST]
+        size_param_array = [
+            self.new_parameters[x.name.lower() + "_pixel count"] for x in NeuType.neutrofile_components()
+        ]
         min_object_size = int(
             max(
                 5,
@@ -153,22 +196,25 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
         )
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
 
-        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, outer_dna_mask)
+        result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, cleaned_inner, cleaned_outer)
 
-        self.nets = len(np.unique(outer_dna_components[outer_dna_components > 0]))
+        nets_components = [k for k, v in net_annotation.items() if v["category"] == "NET"]
+        unknown_net_components = [k for k, v in net_annotation.items() if v["category"] != "NET"]
 
-        result_labeling[outer_dna_components > 0] = NET_VAL
+        self.count_dict[NeuType.NET] = len(nets_components)
+        self.count_dict[NeuType.Unknown_extra] = len(unknown_net_components)
+
+        result_labeling[np.isin(outer_dna_components, nets_components)] = NeuType.NET.value
+        result_labeling[np.isin(outer_dna_components, unknown_net_components)] = NeuType.Unknown_extra.value
         max_component = inner_dna_components.max()
         inner_dna_components[outer_dna_components > 0] = outer_dna_components[outer_dna_components > 0] + max_component
         for value in np.unique(inner_dna_components[outer_dna_components > 0]):
             roi_annotation[value] = net_annotation[value - max_component]
             roi_annotation[value]["component_id"] = value
         alternative_representation = {LABELING_NAME: result_labeling}
-        for name, val in COMPONENT_DICT.items():
-            alternative_representation[name] = (result_labeling == val).astype(np.uint8) * val
-        alternative_representation["NETs"] = (result_labeling == NET_VAL).astype(np.uint8)
-        alternative_representation["Unknown"] = (result_labeling == OTHER_VAL).astype(np.uint8) * OTHER_VAL
-        self.net_size = np.count_nonzero(alternative_representation["NETs"])
+        for val in NeuType.all_components():
+            alternative_representation[str(val)] = (result_labeling == val.value).astype(np.uint8) * val.value
+        self.net_size = np.count_nonzero(alternative_representation[str(NeuType.NET)])
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
@@ -179,19 +225,7 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             },
         )
 
-    def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
-        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
-        inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
-        cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
-            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
-        )
-        
-        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        outer_noise_filtering_parameters = self.new_parameters["outer_dna_noise_filtering"]
-        cleaned_outer = noise_filtering_dict[outer_noise_filtering_parameters["name"]].noise_filter(
-            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
-        )
-        
+    def _classify_neutrofile(self, inner_dna_components, cleaned_inner, cleaned_outer):
         laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
@@ -205,19 +239,16 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
             voxels = np.count_nonzero(component)
             perimeter = np.count_nonzero(component_border)
             diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
-            # colocalization1 = np.mean((cleaned_inner[component] - 22) * (cleaned_outer[component] - 80))
 
             if perimeter == 0:
                 continue
             data_dict = {
                 "pixel count": voxels,
-                "LoG": np.mean(laplacian_image[component]),
-                "brightness": np.quantile(cleaned_inner[component], 0.9), # np.mean(cleaned_inner[component]),
-                # 'br median': np.median(cleaned_inner[component]),
-                #'br top10': np.quantile(cleaned_inner[component], 0.9),
+                "brightness gradient": np.mean(laplacian_image[component]),
+                "brightness": np.quantile(cleaned_inner[component], 0.9),
                 "intensity": np.sum(cleaned_inner[component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
-                "ext. brightness": np.mean(cleaned_outer[component]),
+                "ext. brightness": np.quantile(cleaned_outer[component], 0.9),
                 #                  "roundness": new_sphericity(component, self.image.voxel_size),
                 #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
                 #                 "diameter": diameter,
@@ -236,45 +267,46 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                     f"{prefix} {suffix}": sine_score_function(
                         data_dict[suffix],
                         softness=self.new_parameters["softness"],
-                        **self.new_parameters[f"{prefix.lower()}_{suffix}"],
+                        **self.new_parameters[f"{prefix.name.lower()}_{suffix}"],
                     )
-                    for prefix, suffix in product(COMPONENT_SCORE_LIST, PARAMETER_TYPE_LIST)
+                    for prefix, suffix in product(NeuType.neutrofile_components(), PARAMETER_TYPE_LIST)
                 },
             )
             score_list = []
-            for component_name in COMPONENT_SCORE_LIST:
+            for component_name in NeuType.neutrofile_components():
                 score = 1
                 for parameter in PARAMETER_TYPE_LIST:
                     score *= annotation[val][f"{component_name} {parameter}"]
                 score_list.append((score, component_name))
-            for el in score_list:
-                annotation[val][el[1] + SCORE_SUFFIX] = el[0]
+                annotation[val][str(component_name) + SCORE_SUFFIX] = score
+
             score_list = sorted(score_list)
             if (
                 score_list[-1][0] < self.new_parameters["minimum_score"]
                 or score_list[-2][0] > self.new_parameters["maximum_other"]
             ):
-                labeling[component] = OTHER_VAL
+                labeling[component] = NeuType.Unknown_intra.value
                 self.other += 1
             else:
-                labeling[component] = COMPONENT_DICT[score_list[-1][1]]
-                self.count_dict[COMPONENT_DICT[score_list[-1][1]]] += 1
-                annotation[val]["category"] = score_list[-1][1]
+                labeling[component] = score_list[-1][1].value
+                self.count_dict[score_list[-1][1]] += 1
+                annotation[val]["category"] = str(score_list[-1][1])
 
         return labeling, annotation
 
     def get_info_text(self):
-        return (
-            f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
-            f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
-        )
+        return ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
+        # return (
+        #     f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
+        #     f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
+        # )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
         return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
 
     @classmethod
     def get_name(cls) -> str:
-        return "Trapezoid Segment Neutrofile"
+        return "Trapalyzer"
 
     @classmethod
     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
@@ -283,15 +315,15 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 *(
                     [
                         AlgorithmProperty(
-                            f"{prefix.lower()}_{suffix}",
+                            f"{prefix.name.lower()}_{suffix}",
                             f"{prefix} {suffix}",
-                            {"lower_bound": 10, "upper_bound": 50},
+                            {"lower_bound": 0, "upper_bound": 1},
                             property_type=TrapezoidWidget,
                         )
                         for suffix in PARAMETER_TYPE_LIST
                     ]
                     + ["-------------------"]
-                    for prefix in COMPONENT_SCORE_LIST
+                    for prefix in NeuType.neutrofile_components()
                 )
             )
         ) + [
@@ -344,238 +376,18 @@ class TrapezoidNeutrofileSegmentation(NeutrofileSegmentationBase):
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
-                "net_LoG", "NET LoG", {"lower_bound": 0.0, "upper_bound": 1.0}, property_type=TrapezoidWidget
+                "net_brightness_gradient",
+                "NET brightness gradient",
+                {"lower_bound": 0.0, "upper_bound": 1.0},
+                property_type=TrapezoidWidget,
+            ),
+            AlgorithmProperty(
+                "unknown_net", "NET unclassified components", False, help_text="If mark unknown net components"
             ),
             "-----------------------",
         ]
 
         return thresholds + initial
-
-
-# class NeutrofileSegmentation(NeutrofileSegmentationBase):
-#     def __init__(self):
-#         super().__init__()
-#         self.good, self.bad, self.nets, self.bacteria, self.net_area = 0, 0, 0, 0, 0
-#
-#     @staticmethod
-#     def _range_threshold(data: np.ndarray, thr):
-#         thr1, thr2 = thr
-#         return (data > thr1) * (data < thr2)
-#
-#     def _calculate_mask(self, channel, threshold_name):
-#         thr: BaseThreshold = threshold_dict[self.new_parameters[threshold_name]["name"]]
-#         mask, thr_val = thr.calculate_mask(
-#             channel, self.mask, self.new_parameters[threshold_name]["values"], operator.gt
-#         )
-#         return mask, thr_val
-#
-#     @staticmethod
-#     def _calc_components(arr, min_size):
-#         return sitk.GetArrayFromImage(
-#             sitk.RelabelComponent(
-#                 sitk.ConnectedComponent(sitk.GetImageFromArray(arr)),
-#                 min_size,
-#             )
-#         )
-#
-#     @staticmethod
-#     def _remove_net_components(channel, components, min_reach_thr):
-#         for val in np.unique(components):
-#             if val == 0:
-#                 continue
-#             mask = components == val
-#             if np.max(channel[mask]) < min_reach_thr:
-#                 components[mask] = 0
-#         return components
-#
-#     def _classify_neutrofile(self, inner_dna_components, out_dna_mask):
-#         dna_channel = self.get_channel(self.new_parameters["dna_marker"])
-#         _mask, alive_thr_val = self._calculate_mask(dna_channel, "threshold2")
-#         result_labeling = np.zeros(inner_dna_components.shape, dtype=np.uint8)
-#
-#         self.good, self.bad, self.nets, self.bacteria, self.net_area = 0, 0, 0, 0, 0
-#         sizes = np.bincount(inner_dna_components.flat)
-#         ratio = self.new_parameters["dead_ratio"]
-#         max_size = min(self.new_parameters["maximum_neutrofile_size"], self.new_parameters["net_size"])
-#         roi_annotation = {}
-#         for val in np.unique(inner_dna_components):
-#             if val == 0:
-#                 continue
-#             mm = inner_dna_components == val
-#             count = np.sum(out_dna_mask[mm])
-#
-#             mean_brightness = np.mean(dna_channel[mm])
-#             if sizes[val] < max_size:
-#                 if count < ratio * sizes[val]:
-#                     if mean_brightness > alive_thr_val:
-#                         roi_annotation[val] = {
-#                             "type": "Alive neutrofile",
-#                             "Mean brightness": mean_brightness,
-#                             "Voxels": sizes[val],
-#                             "Dead marker ratio": count / sizes[val],
-#                         }
-#                         result_labeling[mm] = ALIVE_VAL
-#                         self.good += 1
-#                     else:
-#                         roi_annotation[val] = {
-#                             "type": "Bacteria group",
-#                             "Mean brightness": mean_brightness,
-#                             "Voxels": sizes[val],
-#                             "Dead marker ratio": count / sizes[val],
-#                         }
-#                         result_labeling[mm] = BACTERIA_VAL
-#                         self.bacteria += 1
-#                 else:
-#                     roi_annotation[val] = {
-#                         "type": "Dead neutrofile",
-#                         "Voxels": sizes[val],
-#                         "Dead marker ratio": count / sizes[val],
-#                     }
-#                     result_labeling[mm] = DEAD_VAL
-#                     self.bad += 1
-#             elif count < ratio * sizes[val]:
-#                 roi_annotation[val] = {
-#                     "type": "Bacteria group",
-#                     "Voxels": sizes[val],
-#                     "Dead marker ratio": count / sizes[val],
-#                 }
-#                 result_labeling[mm] = BACTERIA_VAL
-#                 self.bacteria += 1
-#             else:
-#                 roi_annotation[val] = {
-#                     "type": "Bacteria group",
-#                     "Voxels": sizes[val],
-#                     "Dead marker ratio": count / sizes[val],
-#                 }
-#                 result_labeling[mm] = BACTERIA_VAL
-#                 self.bacteria += 1
-#                 print("problem here", val, sizes[val])
-#         return result_labeling, roi_annotation
-#
-#     def calculation_run(self, report_fun: Callable[[str, int], None] = None) -> SegmentationResult:
-#         for key in self.new_parameters.keys():
-#             self.parameters[key] = deepcopy(self.new_parameters[key])
-#         dna_channel = self.get_channel(self.new_parameters["dna_marker"])
-#         dead_dna_channel = self.get_channel(self.new_parameters["dead_dna_marker"])
-#         inner_dna_mask, thr_val = self._calculate_mask(dna_channel, "threshold")
-#         out_dna_mask, dead_thr_val = self._calculate_mask(dead_dna_channel, "dead_threshold")
-#         _mask, net_thr_val = self._calculate_mask(dead_dna_channel, "net_threshold")
-#
-#         out_dna_components = self._calc_components(out_dna_mask, self.new_parameters["net_size"])
-#         out_dna_components = self._remove_net_components(dead_dna_channel, out_dna_components, net_thr_val)
-#
-#         _inner_dna_mask = inner_dna_mask.copy()
-#
-#         inner_dna_mask[out_dna_components > 0] = 0
-#         inner_dna_components = self._calc_components(inner_dna_mask, self.new_parameters["minimum_size"])
-#
-#         idn = inner_dna_components.copy()
-#         odn = out_dna_components.copy()
-#
-#         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, out_dna_mask)
-#         self.nets = np.max(out_dna_components)
-#         self.net_area = np.count_nonzero(out_dna_components)
-#         if self.new_parameters["separate_nets"]:
-#             result_labeling[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + (NET_VAL - 1)
-#         else:
-#             result_labeling[out_dna_components > 0] = NET_VAL
-#         max_component = inner_dna_components.max()
-#         inner_dna_components[out_dna_components > 0] = out_dna_components[out_dna_components > 0] + max_component
-#         for val in np.unique(out_dna_components[out_dna_components > 0]):
-#             roi_annotation[val + max_component] = {"type": "Neutrofile net"}
-#         return SegmentationResult(
-#             inner_dna_components,
-#             self.get_segmentation_profile(),
-#             {
-#                 "inner dna base": AdditionalLayerDescription(_inner_dna_mask, "labels", "inner dna base"),
-#                 "inner dna": AdditionalLayerDescription(inner_dna_mask, "labels", "inner dna"),
-#                 "inner dna com": AdditionalLayerDescription(idn, "labels", "inner dna com"),
-#                 "outer dna": AdditionalLayerDescription(out_dna_mask, "labels", "out dna"),
-#                 "outer dna com": AdditionalLayerDescription(odn, "labels", "outer dna com"),
-#             },
-#             alternative_representation={LABELING_NAME: result_labeling},
-#             roi_annotation=roi_annotation,
-#         )
-#
-#     def get_info_text(self):
-#         return (
-#             f"Alive: {self.good}, dead: {self.bad}, nets: {self.nets}, bacteria groups: {self.bacteria}, "
-#             f"net size {self.net_area}"
-#         )
-#
-#     @classmethod
-#     def get_name(cls) -> str:
-#         return "Segment Neutrofile"
-#
-#     @staticmethod
-#     def single_channel():
-#         return False
-#
-#     @classmethod
-#     def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-#         return [
-#             AlgorithmProperty("dna_marker", "DNA marker", 1, property_type=Channel),
-#             AlgorithmProperty(
-#                 "threshold",
-#                 "Threshold",
-#                 next(iter(threshold_dict.keys())),
-#                 possible_values=threshold_dict,
-#                 property_type=AlgorithmDescribeBase,
-#             ),
-#             AlgorithmProperty(
-#                 "threshold2",
-#                 "Mean alive value",
-#                 next(iter(threshold_dict.keys())),
-#                 possible_values=threshold_dict,
-#                 property_type=AlgorithmDescribeBase,
-#             ),
-#             AlgorithmProperty("dead_dna_marker", "Dead DNA marker", 0, property_type=Channel),
-#             AlgorithmProperty(
-#                 "dead_threshold",
-#                 "Dead Threshold",
-#                 next(iter(threshold_dict.keys())),
-#                 possible_values=threshold_dict,
-#                 property_type=AlgorithmDescribeBase,
-#             ),
-#             AlgorithmProperty(
-#                 "net_threshold",
-#                 "Net reach Threshold",
-#                 next(iter(threshold_dict.keys())),
-#                 possible_values=threshold_dict,
-#                 property_type=AlgorithmDescribeBase,
-#             ),
-#             AlgorithmProperty("minimum_size", "Minimum size (px)", 20, (0, 10 ** 6)),
-#             AlgorithmProperty(
-#                 "maximum_neutrofile_size",
-#                 "Maximum neutrofile size (px)",
-#                 100,
-#                 (0, 10 ** 6),
-#             ),
-#             AlgorithmProperty("net_size", "net size (px)", 500, (0, 10 ** 6), 100),
-#             AlgorithmProperty("separate_nets", "Mark nets separate", True),
-#             AlgorithmProperty("dead_ratio", "Dead marker ratio", 0.5, (0, 1)),
-#         ]
-#
-#     @classmethod
-#     def get_default_values(cls):
-#         val = super().get_default_values()
-#         val["threshold"] = {
-#             "name": ManualThreshold.get_name(),
-#             "values": {"threshold": 120},
-#         }
-#         val["threshold2"] = {
-#             "name": ManualThreshold.get_name(),
-#             "values": {"threshold": 100},
-#         }
-#         val["dead_threshold"] = {
-#             "name": ManualThreshold.get_name(),
-#             "values": {"threshold": 20},
-#         }
-#         val["net_threshold"] = {
-#             "name": ManualThreshold.get_name(),
-#             "values": {"threshold": 34},
-#         }
-#         return val
 
 
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
