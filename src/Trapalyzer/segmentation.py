@@ -68,6 +68,7 @@ DESCRIPTION_DICT = {
     NeuType.NET: "neutrophil extracellular trap",
     NeuType.Unknown_intra: "unclassified intracellurar component",
     NeuType.Unknown_extra: "unclassified extracellurar component",
+    NeuType.Bacteria: "bacteria",
 }
 
 
@@ -88,13 +89,21 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
         return mask, thr_val
 
     @staticmethod
-    def _calc_components(arr, min_size):
-        return sitk.GetArrayFromImage(
-            sitk.RelabelComponent(
-                sitk.ConnectedComponent(sitk.GetImageFromArray(arr)),
+    def _calc_components(arr, min_size, close_holes=0):
+        components = sitk.RelabelComponent(
+            sitk.ConnectedComponent(sitk.GetImageFromArray(arr)),
+            min_size,
+        )
+
+        if close_holes:
+            binary1 = sitk.BinaryThreshold(components, 0, 0)
+            removed_small = sitk.RelabelComponent(sitk.ConnectedComponent(binary1), close_holes)
+            binary2 = sitk.BinaryThreshold(removed_small, 0, 0)
+            components = sitk.RelabelComponent(
+                sitk.ConnectedComponent(binary2),
                 min_size,
             )
-        )
+        return sitk.GetArrayFromImage(components)
 
 
 class Trapalyzer(NeutrofileSegmentationBase):
@@ -118,7 +127,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
             if val == 0:
                 continue
             component = np.array(nets == val)
-            brightness_gradient = np.mean(laplacian_image[component])
+            brightness_gradient = np.mean(laplacian_outer_image[component])
             brightness_gradient_score = sine_score_function(
                 brightness_gradient,
                 softness=self.new_parameters["softness"],
@@ -147,8 +156,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "component_id": i,
                 "category": category,
                 "pixel count": voxels,
-                "LoG": brightness_gradient,
-                "LoG outer": np.mean(laplacian_outer_image[component]),
+                "brightness gradient outer": brightness_gradient,
+                "brightness gradient": np.mean(laplacian_image[component]),
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
             }
@@ -194,7 +203,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 self.new_parameters["minimum_size"],
             )
         )
-        inner_dna_components = self._calc_components(inner_dna_mask, min_object_size)
+        inner_dna_components = self._calc_components(inner_dna_mask, min_object_size, close_holes=100)
 
         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, cleaned_inner, cleaned_outer)
 
@@ -286,7 +295,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 or score_list[-2][0] > self.new_parameters["maximum_other"]
             ):
                 labeling[component] = NeuType.Unknown_intra.value
-                self.other += 1
+                self.count_dict[NeuType.Unknown_intra] += 1
             else:
                 labeling[component] = score_list[-1][1].value
                 self.count_dict[score_list[-1][1]] += 1
@@ -296,10 +305,6 @@ class Trapalyzer(NeutrofileSegmentationBase):
 
     def get_info_text(self):
         return ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
-        # return (
-        #     f"Alive: {self.count_dict[ALIVE_VAL]}, Decondensed: {self.count_dict[DECONDENSED_VAL]}, Dead: {self.count_dict[DEAD_VAL]}, Bacteria: {self.count_dict[BACTERIA_VAL]}, "
-        #     f"NETs: {self.nets}, NET pixel coverage: {self.net_size} Unknown: {self.other}"
-        # )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
         return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
@@ -319,6 +324,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                             f"{prefix} {suffix}",
                             {"lower_bound": 0, "upper_bound": 1},
                             property_type=TrapezoidWidget,
+                            help_text=f"{DESCRIPTION_DICT[prefix]} {suffix}",
                         )
                         for suffix in PARAMETER_TYPE_LIST
                     ]
@@ -367,7 +373,10 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 property_type=AlgorithmDescribeBase,
             ),
             AlgorithmProperty(
-                "net_size", "NET pixel count", {"lower_bound": 850, "upper_bound": 50000}, property_type=TrapezoidWidget
+                "net_size",
+                "NET pixel count",
+                {"lower_bound": 850, "upper_bound": 999999},
+                property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
                 "net_ext_brightness",
@@ -382,7 +391,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
-                "unknown_net", "NET unclassified components", False, help_text="If mark unknown net components"
+                "unknown_net", "detect extracellular artifacts", True, help_text="If mark unknown net components"
             ),
             "-----------------------",
         ]

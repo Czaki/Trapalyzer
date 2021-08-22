@@ -53,7 +53,7 @@ class ComponentVoxels(MeasurementMethodBase):
 
 
 class ComponentCount(MeasurementMethodBase):
-    text_info = "Componet type count", "Count elements of given component type"
+    text_info = "component type count", "Count elements of given component type"
 
     @classmethod
     def get_units(cls, ndim):
@@ -138,7 +138,7 @@ class NeutrofileParameter(MeasurementMethodBase):
 
 
 class NetPercent(MeasurementMethodBase):
-    text_info = "Neutrophil net percent", "Total percentage occupied by neutrophil nets"
+    text_info = "NET percent coverage", "Total percentage occupied by neutrophil nets"
 
     @classmethod
     def get_units(cls, ndim):
@@ -156,3 +156,19 @@ class NetPercent(MeasurementMethodBase):
     @classmethod
     def get_starting_leaf(cls):
         return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.No)
+
+
+class ComponentMid(MeasurementMethodBase):
+    text_info = "Component position", "Position of component as string"
+
+    @classmethod
+    def get_units(cls, ndim):
+        return "str"
+
+    @staticmethod
+    def calculate_property(bounds_info, _component_num, **kwargs):
+        return str(bounds_info[_component_num])
+
+    @classmethod
+    def get_starting_leaf(cls):
+        return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.Yes)
