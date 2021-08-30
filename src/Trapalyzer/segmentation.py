@@ -133,8 +133,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 softness=self.new_parameters["softness"],
                 **self.new_parameters["net_brightness_gradient"],
             )
-            brightness = np.mean(inner_dna_channel[component])
-            ext_brightness = np.mean(outer_dna_channel[component])
+            brightness = np.quantile(inner_dna_channel[component], 0.9)
+            ext_brightness = np.quantile(outer_dna_channel[component], 0.9)
             ext_brightness_score = sine_score_function(
                 ext_brightness, softness=self.new_parameters["softness"], **self.new_parameters["net_ext_brightness"]
             )
@@ -156,10 +156,11 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "component_id": i,
                 "category": category,
                 "pixel count": voxels,
-                "brightness gradient outer": brightness_gradient,
-                "brightness gradient": np.mean(laplacian_image[component]),
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
+                "brightness gradient": np.mean(laplacian_image[component]),
+                "ext. brightness gradient": brightness_gradient,
+                "ext. brightness std": np.std(outer_dna_channel[component])
             }
             annotation[i] = data_dict
             nets[component] = i

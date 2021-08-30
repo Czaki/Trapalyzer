@@ -148,7 +148,7 @@ class NetPercent(MeasurementMethodBase):
     def calculate_property(roi_alternative, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
         return (
-            measurement_calculation.Volume.calculate_property(area_array == NeuType.NET1, **kwargs)
+            measurement_calculation.Volume.calculate_property(area_array == NeuType.NET, **kwargs)
             / measurement_calculation.Volume.calculate_property(area_array >= 0, **kwargs)
             * 100
         )
