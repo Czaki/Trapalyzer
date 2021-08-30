@@ -16,6 +16,7 @@ from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
 from PartSegCore.channel_class import Channel
 from PartSegCore.class_generator import enum_register
+from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
 from PartSegCore.segmentation.noise_filtering import noise_filtering_dict
@@ -252,13 +253,15 @@ class Trapalyzer(NeutrofileSegmentationBase):
         laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
+        bounds = ROIInfo.calc_bounds(inner_dna_components)
         inner_dna_components_border = get_border(inner_dna_components)
 
         for val in np.unique(inner_dna_components):
             if val == 0:
                 continue
-            component = np.array(inner_dna_components == val)
-            component_border = inner_dna_components_border == val
+            slices = tuple(bounds[val].get_slices(margin=5))
+            component = np.array(inner_dna_components[slices] == val)
+            component_border = inner_dna_components_border[slices] == val
             voxels = np.count_nonzero(component)
             perimeter = np.count_nonzero(component_border)
             diameter = Diameter.calculate_property(component, voxel_size=(1,) * component.ndim, result_scalar=1)
@@ -267,11 +270,11 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 continue
             data_dict = {
                 "pixel count": voxels,
-                "brightness gradient": np.mean(laplacian_image[component]),
-                "brightness": np.quantile(cleaned_inner[component], 0.9),
-                "intensity": np.sum(cleaned_inner[component]),
+                "brightness gradient": np.mean(laplacian_image[slices][component]),
+                "brightness": np.quantile(cleaned_inner[slices][component], 0.9),
+                "intensity": np.sum(cleaned_inner[slices][component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
-                "ext. brightness": np.quantile(cleaned_outer[component], 0.9),
+                "ext. brightness": np.quantile(cleaned_outer[slices][component], 0.9),
                 #                  "roundness": new_sphericity(component, self.image.voxel_size),
                 #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
                 #                 "diameter": diameter,
@@ -308,10 +311,10 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 score_list[-1][0] < self.new_parameters["minimum_score"]
                 or score_list[-2][0] > self.new_parameters["maximum_other"]
             ):
-                labeling[component] = NeuType.Unknown_intra.value
+                labeling[inner_dna_components == val] = NeuType.Unknown_intra.value
                 self.count_dict[NeuType.Unknown_intra] += 1
             else:
-                labeling[component] = score_list[-1][1].value
+                labeling[inner_dna_components == val] = score_list[-1][1].value
                 self.count_dict[score_list[-1][1]] += 1
                 annotation[val][CATEGORY_STR] = score_list[-1][1]
 
