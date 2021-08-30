@@ -12,13 +12,14 @@ from napari.layers import Image
 from napari.types import LayerDataTuple
 
 from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
+from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
 from PartSegCore.channel_class import Channel
+from PartSegCore.class_generator import enum_register
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
 from PartSegCore.segmentation.noise_filtering import noise_filtering_dict
 from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
-from PartSegCore.analysis.measurement_calculation import get_border, Diameter
 
 from .widgets import TrapezoidWidget
 
@@ -51,6 +52,8 @@ class NeuType(Enum):
     def all_components(cls):
         return cls.__members__.values()
 
+
+enum_register.register_class(NeuType)
 
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
@@ -160,7 +163,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "ext. brightness": ext_brightness,
                 "brightness gradient": np.mean(laplacian_image[component]),
                 "ext. brightness gradient": brightness_gradient,
-                "ext. brightness std": np.std(outer_dna_channel[component])
+                "ext. brightness std": np.std(outer_dna_channel[component]),
             }
             annotation[i] = data_dict
             nets[component] = i
@@ -267,8 +270,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 # "circumference": len(component_border_coords[0]),
                 # "area to circumference": voxels / len(component_border_coords[0]),
                 # "signal colocalization": colocalization1,
-                "circularity": 3*np.pi*voxels/perimeter**2, # inspired by NETQUANT approach
-                "circularity2": voxels / ((diameter ** 2 / 4) * np.pi)
+                "circularity": 3 * np.pi * voxels / perimeter ** 2,  # inspired by NETQUANT approach
+                "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
             }
             annotation[val] = dict(
                 {"component_id": val, "category": "Unknown"},
