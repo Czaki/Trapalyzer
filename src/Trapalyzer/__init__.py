@@ -32,6 +32,7 @@ def register():
     register_fun(measurement.NeutrofileScore, RegisterEnum.analysis_measurement)
     register_fun(measurement.NeutrofileParameter, RegisterEnum.analysis_measurement)
     register_fun(measurement.ComponentMid, RegisterEnum.analysis_measurement)
+    register_fun(measurement.QualityMeasure, RegisterEnum.analysis_measurement)
     register_fun(widgets.qss_file, RegisterEnum._qss_register)
 
 

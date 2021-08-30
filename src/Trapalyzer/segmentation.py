@@ -53,10 +53,16 @@ class NeuType(Enum):
         return cls.__members__.values()
 
 
-enum_register.register_class(NeuType)
+try:
+    # noinspection PyUnresolvedReferences,PyUnboundLocalVariable
+    reloading
+except NameError:
+    reloading = False  # means the module is being imported
+    enum_register.register_class(NeuType)
 
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
+CATEGORY_STR = "category"
 PARAMETER_TYPE_LIST = [
     "pixel count",
     "brightness",
@@ -116,6 +122,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         self.nets = 0
         self.other = 0
         self.net_size = 0
+        self.quality = 0
 
     def classify_nets(self, outer_dna_mask, net_size):
         nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
@@ -151,13 +158,13 @@ class Trapalyzer(NeutrofileSegmentationBase):
                     nets[component] = 0
                     continue
                 else:
-                    category = "Unknown NET"
+                    category = NeuType.Unknown_extra
             else:
-                category = "NET"
+                category = NeuType.NET
 
             data_dict = {
                 "component_id": i,
-                "category": category,
+                CATEGORY_STR: category,
                 "pixel count": voxels,
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
@@ -211,8 +218,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
 
         result_labeling, roi_annotation = self._classify_neutrofile(inner_dna_components, cleaned_inner, cleaned_outer)
 
-        nets_components = [k for k, v in net_annotation.items() if v["category"] == "NET"]
-        unknown_net_components = [k for k, v in net_annotation.items() if v["category"] != "NET"]
+        nets_components = [k for k, v in net_annotation.items() if v[CATEGORY_STR] == NeuType.NET]
+        unknown_net_components = [k for k, v in net_annotation.items() if v[CATEGORY_STR] != NeuType.NET]
 
         self.count_dict[NeuType.NET] = len(nets_components)
         self.count_dict[NeuType.Unknown_extra] = len(unknown_net_components)
@@ -228,6 +235,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
         for val in NeuType.all_components():
             alternative_representation[str(val)] = (result_labeling == val.value).astype(np.uint8) * val.value
         self.net_size = np.count_nonzero(alternative_representation[str(NeuType.NET)])
+        from .measurement import QualityMeasure
+
+        self.quality = QualityMeasure.calculate_property(inner_dna_components, roi_annotation)
         return SegmentationResult(
             inner_dna_components,
             self.get_segmentation_profile(),
@@ -274,7 +284,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
             }
             annotation[val] = dict(
-                {"component_id": val, "category": "Unknown"},
+                {"component_id": val, CATEGORY_STR: NeuType.Unknown_intra},
                 **data_dict,
                 **{
                     f"{prefix} {suffix}": sine_score_function(
@@ -303,12 +313,15 @@ class Trapalyzer(NeutrofileSegmentationBase):
             else:
                 labeling[component] = score_list[-1][1].value
                 self.count_dict[score_list[-1][1]] += 1
-                annotation[val]["category"] = str(score_list[-1][1])
+                annotation[val][CATEGORY_STR] = score_list[-1][1]
 
         return labeling, annotation
 
     def get_info_text(self):
-        return ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
+        return (
+            ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
+            + f"\nQuality: {self.quality}"
+        )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
         return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))

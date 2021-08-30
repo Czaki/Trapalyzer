@@ -7,11 +7,11 @@ from PartSegCore.algorithm_describe_base import AlgorithmProperty
 from PartSegCore.analysis import measurement_calculation
 from PartSegCore.analysis.measurement_base import AreaType, Leaf, MeasurementMethodBase, PerComponent
 
-from .segmentation import LABELING_NAME, PARAMETER_TYPE_LIST, SCORE_SUFFIX, NeuType
+from .segmentation import CATEGORY_STR, LABELING_NAME, PARAMETER_TYPE_LIST, SCORE_SUFFIX, NeuType
 
 
 class ComponentArea(MeasurementMethodBase):
-    text_info = "Componet type area", "Calculate area of given component type"
+    text_info = "Component type area", "Calculate area of given component type"
 
     @classmethod
     def get_units(cls, ndim):
@@ -53,7 +53,7 @@ class ComponentVoxels(MeasurementMethodBase):
 
 
 class ComponentCount(MeasurementMethodBase):
-    text_info = "component type count", "Count elements of given component type"
+    text_info = "Component type count", "Count elements of given component type"
 
     @classmethod
     def get_units(cls, ndim):
@@ -73,7 +73,7 @@ class ComponentCount(MeasurementMethodBase):
 
 
 class ClassifyNeutrofile(MeasurementMethodBase, ABC):
-    text_info = "Classify neutrophil", "Classify if component is alive orr dead neutrophil, bacteria group or net"
+    text_info = "Type", "Classify if component is alive orr dead neutrophil, bacteria group or net"
 
     @classmethod
     def get_units(cls, ndim):
@@ -172,3 +172,27 @@ class ComponentMid(MeasurementMethodBase):
     @classmethod
     def get_starting_leaf(cls):
         return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.Yes)
+
+
+class QualityMeasure(MeasurementMethodBase):
+    text_info = "Trapelyzer Quality score"
+
+    @classmethod
+    def get_units(cls, ndim):
+        return 1
+
+    @staticmethod
+    def calculate_property(area_array, roi_annotation, **kwargs):
+        total_segmented_voxels = np.count_nonzero(area_array)
+        voxels_size = np.bincount(area_array.flatten())
+        unknown_voxels = sum(
+            voxels_size[num]
+            for num, val in roi_annotation.items()
+            if val[CATEGORY_STR] in {NeuType.Unknown_intra, NeuType.Unknown_extra}
+        )
+        assert unknown_voxels < total_segmented_voxels
+        return (1 - unknown_voxels / total_segmented_voxels) ** 12.91
+
+    @classmethod
+    def get_starting_leaf(cls):
+        return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.No)
