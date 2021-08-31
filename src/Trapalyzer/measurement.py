@@ -175,7 +175,7 @@ class ComponentMid(MeasurementMethodBase):
 
 
 class QualityMeasure(MeasurementMethodBase):
-    text_info = "Trapelyzer Quality score"
+    text_info = "Trapelyzer Quality score", ""
 
     @classmethod
     def get_units(cls, ndim):
