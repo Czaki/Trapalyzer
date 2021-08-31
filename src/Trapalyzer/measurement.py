@@ -191,7 +191,9 @@ class QualityMeasure(MeasurementMethodBase):
             if val[CATEGORY_STR] in {NeuType.Unknown_intra, NeuType.Unknown_extra}
         )
         assert unknown_voxels < total_segmented_voxels
-        return (1 - unknown_voxels / total_segmented_voxels) ** 12.91
+        quality = (1 - unknown_voxels / total_segmented_voxels) ** 6.64
+        quality = round(100*quality)
+        return str(quality) + '%'
 
     @classmethod
     def get_starting_leaf(cls):
