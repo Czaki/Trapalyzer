@@ -1,5 +1,7 @@
+import os
+
 from napari_plugin_engine import napari_hook_implementation
-from Trapalyzer.napari_functions import count_size
+from Trapalyzer.napari_functions import count_size, load_annnotation
 from Trapalyzer.segmentation import laplacian_estimate
 
 try:
@@ -44,3 +46,10 @@ def napari_experimental_provide_dock_widget2():
 @napari_hook_implementation(specname="napari_experimental_provide_function")
 def napari_experimental_provide_function3():
     return laplacian_estimate
+
+
+@napari_hook_implementation
+def napari_get_reader(path: str):
+    if os.path.splitext(path)[1] == ".xml":
+        print("aaaa")
+        return load_annnotation
