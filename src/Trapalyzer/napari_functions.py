@@ -43,7 +43,7 @@ def load_annnotation(file_path):
                 "opacity": 0.3,
                 "edge_color": [COLOR_DICT.get(name, "white")],
                 "edge_width": 4,
-                "face_color": [COLOR_DICT.get(name, "white") + (0.2,)],
+                "face_color": [COLOR_DICT.get(name, (1, 1, 1)) + (0.2,)],
             },
             "shapes",
         )
