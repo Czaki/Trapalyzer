@@ -190,10 +190,10 @@ class QualityMeasure(MeasurementMethodBase):
             for num, val in roi_annotation.items()
             if val[CATEGORY_STR] in {NeuType.Unknown_intra, NeuType.Unknown_extra}
         )
-        assert unknown_voxels < total_segmented_voxels
+        assert unknown_voxels <= total_segmented_voxels
         quality = (1 - unknown_voxels / total_segmented_voxels) ** 6.64
-        quality = round(100*quality)
-        return str(quality) + '%'
+        quality = round(100 * quality)
+        return f"{quality}%"
 
     @classmethod
     def get_starting_leaf(cls):
