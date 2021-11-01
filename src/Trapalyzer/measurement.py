@@ -175,7 +175,7 @@ class ComponentMid(MeasurementMethodBase):
 
 
 class QualityMeasure(MeasurementMethodBase):
-    text_info = "Trapelyzer Quality score", ""
+    text_info = "Quality score", ""
 
     @classmethod
     def get_units(cls, ndim):
@@ -190,6 +190,8 @@ class QualityMeasure(MeasurementMethodBase):
             for num, val in roi_annotation.items()
             if val[CATEGORY_STR] in {NeuType.Unknown_intra, NeuType.Unknown_extra}
         )
+        if total_segmented_voxels == 0:
+            return "0%"
         assert unknown_voxels <= total_segmented_voxels
         quality = (1 - unknown_voxels / total_segmented_voxels) ** 6.64
         quality = round(100 * quality)

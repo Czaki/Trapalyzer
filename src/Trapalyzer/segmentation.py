@@ -169,7 +169,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "pixel count": voxels,
                 "brightness": brightness,
                 "ext. brightness": ext_brightness,
-                "brightness gradient": np.mean(laplacian_image[component]),
+                # "brightness gradient": np.mean(laplacian_image[component]),
                 "ext. brightness gradient": brightness_gradient,
                 "ext. brightness std": np.std(outer_dna_channel[component]),
             }
@@ -407,7 +407,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
             AlgorithmProperty(
                 "net_brightness_gradient",
                 "NET brightness gradient",
-                {"lower_bound": 0.0, "upper_bound": 1.0},
+                {"lower_bound": -1.0, "upper_bound": 1.0},
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
