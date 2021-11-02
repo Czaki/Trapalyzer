@@ -144,6 +144,12 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 softness=self.new_parameters["softness"],
                 **self.new_parameters["net_brightness_gradient"],
             )
+            brightness_std = np.std(outer_dna_channel[component])
+            brightness_std_score = sine_score_function(
+                np.std(outer_dna_channel[component]),
+                softness=self.new_parameters["softness"],
+                **self.new_parameters["net_ext_brightness_std"],
+            )
             brightness = np.quantile(inner_dna_channel[component], 0.9)
             ext_brightness = np.quantile(outer_dna_channel[component], 0.9)
             ext_brightness_score = sine_score_function(
@@ -154,7 +160,10 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
             )
 
-            if voxels_score * ext_brightness_score * brightness_gradient_score < self.new_parameters["minimum_score"]:
+            if (
+                voxels_score * ext_brightness_score * brightness_gradient_score * brightness_std_score
+                < self.new_parameters["minimum_score"]
+            ):
                 if not self.new_parameters["unknown_net"]:
                     nets[component] = 0
                     continue
@@ -171,7 +180,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "ext. brightness": ext_brightness,
                 # "brightness gradient": np.mean(laplacian_image[component]),
                 "ext. brightness gradient": brightness_gradient,
-                "ext. brightness std": np.std(outer_dna_channel[component]),
+                "ext. brightness std": brightness_std,
             }
             annotation[i] = data_dict
             nets[component] = i
@@ -408,6 +417,12 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "net_brightness_gradient",
                 "NET brightness gradient",
                 {"lower_bound": -1.0, "upper_bound": 1.0},
+                property_type=TrapezoidWidget,
+            ),
+            AlgorithmProperty(
+                "net_ext_brightness_std",
+                "NET ext. brightness std",
+                {"lower_bound": 4.0, "upper_bound": 10.0},
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
