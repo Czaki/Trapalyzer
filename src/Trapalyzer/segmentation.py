@@ -177,7 +177,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "ext. brightness": ext_brightness,
                 # "brightness gradient": np.mean(laplacian_image[component]),
                 "ext. brightness gradient": brightness_gradient,
-                "ext. brightness std": brightness_std,
+                "ext. brightness SD": brightness_std,
             }
             annotation[i] = data_dict
             nets[component] = i
@@ -253,7 +253,13 @@ class Trapalyzer(NeutrofileSegmentationBase):
             alternative_representation=alternative_representation,
             roi_annotation=roi_annotation,
             additional_layers={
-                "inner_mask": AdditionalLayerDescription(inner_dna_mask.astype(np.uint8), "labels", "inner_mask")
+                "inner_mask": AdditionalLayerDescription(inner_dna_mask.astype(np.uint8), "labels", "inner_mask"),
+                "cleaned outer": AdditionalLayerDescription(
+                    _laplacian_estimate(cleaned_outer, 1.3), "image", "cleaned outer"
+                ),
+                "cleaned inner": AdditionalLayerDescription(
+                    _laplacian_estimate(cleaned_inner, 1.3), "image", "cleaned inner"
+                ),
             },
         )
 
