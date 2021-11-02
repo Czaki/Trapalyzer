@@ -27,7 +27,7 @@ from .widgets import TrapezoidWidget
 
 class NeuType(Enum):
     PMN_neu = 1
-    DEC_neu = 2
+    RND_neu = 2
     NER_neu = 3
     PMP_neu = 4
     Bacteria = 5
@@ -72,7 +72,7 @@ PARAMETER_TYPE_LIST = [
 ]  # "brightness", "roundness"
 DESCRIPTION_DICT = {
     NeuType.PMN_neu: "polymorphonuclear neutrophils",
-    NeuType.DEC_neu: "decondensed chromatin neutrophils",
+    NeuType.RND_neu: "decondensed chromatin neutrophils",
     NeuType.NER_neu: "ruptured nuclear envelope neutrophils",
     NeuType.PMP_neu: "plasma membrane permeabilized neutrophils",
     NeuType.NET: "neutrophil extracellular trap",
