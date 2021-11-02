@@ -136,11 +136,11 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 continue
             component = np.array(nets == val)
             brightness_gradient = np.mean(laplacian_outer_image[component])
-            brightness_gradient_score = sine_score_function(
-                brightness_gradient,
-                softness=self.new_parameters["softness"],
-                **self.new_parameters["net_brightness_gradient"],
-            )
+            # brightness_gradient_score = sine_score_function(
+            #     brightness_gradient,
+            #     softness=self.new_parameters["softness"],
+            #     **self.new_parameters["net_brightness_gradient"],
+            # )
             brightness_std = np.std(cleaned_outer[component])
             brightness_std_score = sine_score_function(
                 np.std(cleaned_outer[component]),
@@ -157,10 +157,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
             )
 
-            if (
-                voxels_score * ext_brightness_score * brightness_gradient_score * brightness_std_score
-                < self.new_parameters["minimum_score"]
-            ):
+            if voxels_score * ext_brightness_score * brightness_std_score < self.new_parameters["minimum_score"]:
                 if not self.new_parameters["unknown_net"]:
                     nets[component] = 0
                     continue
@@ -254,11 +251,11 @@ class Trapalyzer(NeutrofileSegmentationBase):
             roi_annotation=roi_annotation,
             additional_layers={
                 "inner_mask": AdditionalLayerDescription(inner_dna_mask.astype(np.uint8), "labels", "inner_mask"),
-                "cleaned outer": AdditionalLayerDescription(
-                    _laplacian_estimate(cleaned_outer, 1.3), "image", "cleaned outer"
+                "cleaned outer brightness gradient": AdditionalLayerDescription(
+                    _laplacian_estimate(cleaned_outer, 1.3), "image", "cleaned outer brightness gradient"
                 ),
-                "cleaned inner": AdditionalLayerDescription(
-                    _laplacian_estimate(cleaned_inner, 1.3), "image", "cleaned inner"
+                "cleaned inner brightness gradient": AdditionalLayerDescription(
+                    _laplacian_estimate(cleaned_inner, 1.3), "image", "cleaned inner brightness gradient"
                 ),
             },
         )
@@ -418,12 +415,12 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 {"lower_bound": 21, "upper_bound": 100},
                 property_type=TrapezoidWidget,
             ),
-            AlgorithmProperty(
-                "net_brightness_gradient",
-                "NET ext. brightness gradient",
-                {"lower_bound": -1.0, "upper_bound": 1.0},
-                property_type=TrapezoidWidget,
-            ),
+            # AlgorithmProperty(
+            #     "net_brightness_gradient",
+            #     "NET ext. brightness gradient",
+            #     {"lower_bound": -1.0, "upper_bound": 1.0},
+            #     property_type=TrapezoidWidget,
+            # ),
             AlgorithmProperty(
                 "net_ext_brightness_std",
                 "NET ext. brightness SD",
