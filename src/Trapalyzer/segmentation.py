@@ -125,12 +125,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
         self.net_size = 0
         self.quality = 0
 
-    def classify_nets(self, outer_dna_mask, net_size):
+    def classify_nets(self, outer_dna_mask, cleaned_inner, cleaned_outer, net_size):
         nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
-        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
-        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        laplacian_image = _laplacian_estimate(inner_dna_channel, 1.3)
-        laplacian_outer_image = _laplacian_estimate(outer_dna_channel, 1.3)
+        laplacian_outer_image = _laplacian_estimate(cleaned_outer, 1.3)
         annotation = {}
         i = 1
         nets[nets > 0] += 1
@@ -144,14 +141,14 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 softness=self.new_parameters["softness"],
                 **self.new_parameters["net_brightness_gradient"],
             )
-            brightness_std = np.std(outer_dna_channel[component])
+            brightness_std = np.std(cleaned_outer[component])
             brightness_std_score = sine_score_function(
-                np.std(outer_dna_channel[component]),
+                np.std(cleaned_outer[component]),
                 softness=self.new_parameters["softness"],
                 **self.new_parameters["net_ext_brightness_std"],
             )
-            brightness = np.quantile(inner_dna_channel[component], 0.9)
-            ext_brightness = np.quantile(outer_dna_channel[component], 0.9)
+            brightness = np.quantile(cleaned_inner[component], 0.9)
+            ext_brightness = np.quantile(cleaned_outer[component], 0.9)
             ext_brightness_score = sine_score_function(
                 ext_brightness, softness=self.new_parameters["softness"], **self.new_parameters["net_ext_brightness"]
             )
@@ -205,7 +202,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
             outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
         )
         outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
-        outer_dna_components, net_annotation = self.classify_nets(outer_dna_mask, self.new_parameters["net_size"])
+        outer_dna_components, net_annotation = self.classify_nets(
+            outer_dna_mask, cleaned_inner, cleaned_outer, self.new_parameters["net_size"]
+        )
         inner_dna_mask[outer_dna_components > 0] = 0
         size_param_array = [
             self.new_parameters[x.name.lower() + "_pixel count"] for x in NeuType.neutrofile_components()
@@ -415,14 +414,14 @@ class Trapalyzer(NeutrofileSegmentationBase):
             ),
             AlgorithmProperty(
                 "net_brightness_gradient",
-                "NET brightness gradient",
+                "NET ext. brightness gradient",
                 {"lower_bound": -1.0, "upper_bound": 1.0},
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
                 "net_ext_brightness_std",
-                "NET ext. brightness std",
-                {"lower_bound": 4.0, "upper_bound": 10.0},
+                "NET ext. brightness SD",
+                {"lower_bound": 0.0, "upper_bound": 1.0},
                 property_type=TrapezoidWidget,
             ),
             AlgorithmProperty(
