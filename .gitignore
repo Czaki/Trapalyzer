@@ -29,6 +29,7 @@ src/Trapalyzer/_version.py
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+*xcf
 
 # Generated files
 .idea/**/contentModel.xml
