@@ -1,8 +1,9 @@
 import os
 
 from napari_plugin_engine import napari_hook_implementation
-from Trapalyzer.napari_functions import count_size, load_annnotation
-from Trapalyzer.segmentation import laplacian_estimate
+
+from .napari_functions import count_size, load_annnotation
+from .segmentation import laplacian_estimate
 
 try:
     # noinspection PyUnresolvedReferences,PyUnboundLocalVariable
