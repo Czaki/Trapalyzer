@@ -1,0 +1,142 @@
+{
+  "neutrofile_cnn_orygsize": {
+    "__SegmentationProfile__": true,
+    "name": "neutrofile_cnn_orygsize",
+    "algorithm": "Trapalyzer",
+    "values": {
+      "inner_dna": 2,
+      "inner_dna_noise_filtering": {
+        "name": "Median",
+        "values": {
+          "dimension_type": {
+            "__Enum__": true,
+            "__subtype__": "PartSegCore.segmentation.noise_filtering.DimensionType",
+            "value": 1
+          },
+          "radius": 4
+        }
+      },
+      "inner_threshold": {
+        "name": "Manual",
+        "values": {
+          "threshold": 40.0
+        }
+      },
+      "outer_dna": 1,
+      "outer_dna_noise_filtering": {
+        "name": "Median",
+        "values": {
+          "dimension_type": {
+            "__Enum__": true,
+            "__subtype__": "PartSegCore.segmentation.noise_filtering.DimensionType",
+            "value": 1
+          },
+          "radius": 4
+        }
+      },
+      "outer_threshold": {
+        "name": "Manual",
+        "values": {
+          "threshold": 25.0
+        }
+      },
+      "net_size": {
+        "lower_bound": 10000.0,
+        "upper_bound": 999999.0
+      },
+      "net_ext_brightness": {
+        "lower_bound": 22.0,
+        "upper_bound": 230.0
+      },
+      "net_ext_brightness_std": {
+        "lower_bound": 3.0,
+        "upper_bound": 100.0
+      },
+      "unknown_net": true,
+      "pmn_neu_pixel count": {
+        "lower_bound": 1300.0,
+        "upper_bound": 3400.0
+      },
+      "pmn_neu_brightness": {
+        "lower_bound": 85.0,
+        "upper_bound": 270.0
+      },
+      "pmn_neu_ext. brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 22.0
+      },
+      "pmn_neu_brightness gradient": {
+        "lower_bound": 0.3,
+        "upper_bound": 5.0
+      },
+      "rnd_neu_pixel count": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "rnd_neu_brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "rnd_neu_ext. brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "rnd_neu_brightness gradient": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "ner_neu_pixel count": {
+        "lower_bound": 2800.0,
+        "upper_bound": 10000.0
+      },
+      "ner_neu_brightness": {
+        "lower_bound": 40.0,
+        "upper_bound": 160.0
+      },
+      "ner_neu_ext. brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 22.0
+      },
+      "ner_neu_brightness gradient": {
+        "lower_bound": 0.01,
+        "upper_bound": 0.7
+      },
+      "pmp_neu_pixel count": {
+        "lower_bound": 1300.0,
+        "upper_bound": 10000.0
+      },
+      "pmp_neu_brightness": {
+        "lower_bound": 50.0,
+        "upper_bound": 270.0
+      },
+      "pmp_neu_ext. brightness": {
+        "lower_bound": 25.0,
+        "upper_bound": 270.0
+      },
+      "pmp_neu_brightness gradient": {
+        "lower_bound": 0.05,
+        "upper_bound": 5.0
+      },
+      "bacteria_pixel count": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "bacteria_brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "bacteria_ext. brightness": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "bacteria_brightness gradient": {
+        "lower_bound": 0.0,
+        "upper_bound": 1.0
+      },
+      "minimum_score": 0.8,
+      "maximum_other": 0.4,
+      "minimum_size": 40,
+      "softness": 0.1
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Trapalyzer
 
-Trapalyzer is a PartSeg plugins for automatic feature detection and
+Trapalyzer is a PartSeg plugin for automatic feature detection and
 quantification for in-vitro NET release studies.
 
 ## Installation
@@ -8,9 +8,11 @@ Trapalyzer is a plug-in for the PartSeg image processing. To use Trapalyzer, you
 
 After you have installed PartSeg, you can install Trapalyzer:
 
-- On Windows, download the ZIP file with the plug-in (see the screenshot below). Unpack the .zip archiva and move the `Trapalyzer` directory (located in `Trapalyzer-master/src` in the unpacked archive) to the `plugins` directory in the PartSeg folder. 
+- On Windows, download the ZIP file with the plug-in (see the screenshot below). Unpack the .zip archive and move the `Trapalyzer` directory (located in `Trapalyzer-master/src` in the unpacked archive) to the `plugins` directory in the PartSeg folder. 
 - On Linux, we recommend installing via `pip install Trapalyzer`. 
 
-![Downloading Trapalyzer](Tutorial/Figs/download.png)
+![](Tutorial/Figs/download.png)
+
+## Usage examples 
 
 In the Tutorial directory you will find instructions on how to use Trapalyzer to analyze an example data set of fluorescence microscopy images.  
