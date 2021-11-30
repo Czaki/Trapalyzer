@@ -1,22 +1,22 @@
 ## Analyzing microscopic images with Trapalyzer
-This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the batch mode. A sample data set used in this tutorial can be downloaded [here](https://github.com/krzysztoffiok/CNN-based-image-analysis-for-detection-and-quantification-of-neutrophil-extracellular-traps/blob/master/images/large_validation_set.zip). Download and unpack the .zip file from the link in your working directory. After unpacking, the data set used in this tutorial is located in the directory `large_validation_set/xml_pascal_voc_format/images/oryg`. 
+This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the batch mode.   
 
-![Trapalyzer](Figs/0.png)
+A sample data set used in this tutorial can be downloaded [here](https://github.com/krzysztoffiok/CNN-based-image-analysis-for-detection-and-quantification-of-neutrophil-extracellular-traps/tree/master/images). Download and unpack the `large_validation_set.zip` file from the link in your working directory.  
 
-## Installing Trapalyzer
-Trapalyzer is a plug-in for the PartSeg image processing. To use Trapalyzer, [install PartSeg ](https://github.com/4DNucleome/PartSeg) first. 
+After unpacking, the data set used in this tutorial is located in the directory `large_validation_set/xml_pascal_voc_format/images/oryg`. 
 
 ## Interactive mode
 Interactive session of PartSeg is used to analyze single images and to tune the parameters of Trapalyzer.  
 
 Open PartSeg and select the "ROI Analysis" mode. Select "Trapalyzer" in the plug-in selection tab, highlighted below. Depending on the size of your screen, you may want to select the single-screen or the double-screen mode by clicking on *Hide left panel*. 
 
-![Starting window of PartSeg and Trapalyzer](Figs/1.png)
+![](Figs/1.png)
 
 
-Next, select *View -> Toggle Multiple Files* and click on *Load files*, highlighted in the image below. Select first five images from the data set. PartSeg will display the list of the currently loaded files. Double-click on the *raw image* box under the first filename to display the image. 
+Next, select *View -> Toggle Multiple Files* and click on *Load files*, highlighted in the image below. Select first six images from the data set. PartSeg will display the list of the currently loaded files in the *Multiple files* window on the left-hand side of the screen.  
+Double-click on the *raw image* box under the first filename to display the image. 
 
-![Multiple files window](Figs/2.png)
+![](Figs/2.png)
 
 You can now adjust the color channels to match the experiment (region 1. on the screenshot below). In our case, the images are stained with Hoechst 33342 and SYTOX Green, so we want to set two color channels: a blue one and a green one. The proper settings for these images are the following:  
 
@@ -24,10 +24,63 @@ You can now adjust the color channels to match the experiment (region 1. on the 
   - Channel 2: Green (SYTOX Green stain),
   - Channel 3: Blue (Hoechst 33342 stain).  
   
-Note that the number of active channels and their assigned colors may be different for your experiment. Assing the channels in the Trapalyzer window according to their corresponding stains (regions numbered 2. on the screenshot below).
+Note that the number of active channels and their assigned colors may be different for your experiment. Assing the channels in the Trapalyzer window according to their corresponding stains in regions 2. on the screenshot below (All DNA channel = Hoechst stain or equivalent; Extracellular DNA channel = SYTOX Green stain or equivalent).
 
-Next, hover the cursor over some of the objects on the image. The two square brackets in region 3. on the screenshot below give you the information about location of the cursor (the first bracket) and the brightness values of all active channels (the second bracket; the two numbers correspond to channel 2 and channel 3, respectively). Hover the cursor over the edges of a NET and an unstimulated cell to check the proper values for brightness threshold that Trapalyzer will use to detect objects. The brightness threshold is the minimum brightness intensity that's considered to correspond to an object such as a cell, instead of the background. Set the brighntess thresholds for both channels in regions 4. on the screenshot below and click "Execute". Trapalyzer will highlight the detected objects. 
+Next, hover the cursor over some of the objects on the image. The two square brackets in region 3. on the screenshot below give you the information about location of the cursor (the first bracket) and the brightness values of all active channels (the second bracket; the two numbers correspond to channel 2 and channel 3, respectively).  
 
-![Threshold selection](Figs/3.png)
+Hover the cursor over the edges of a NET and an unstimulated cell to check the proper values for brightness threshold that Trapalyzer will use to detect objects. The brightness threshold is the minimum brightness intensity that's considered to correspond to an object such as a cell, instead of the background. Set the brighntess thresholds for both channels in regions 4. and click "Execute". Trapalyzer will highlight the detected objects. 
+
+![](Figs/3.png)
+
+
+
+You can select what kind of labeling to display on the screen in the window highlighted in the image below. The possible options are:
+
+  - ROI: each component gets assigned a different color,
+  - Labeling: each *type* of component gets assigned a different color,
+  - The other options allow to display only the components of a given type. 
+  
+The *Borders* option allows to toggle between two ways of displaying the labeling.  
+Now, select the "Labeling" option. 
+
+![](Figs/4.png)
+
+Initially, with the default parameters, Trapalyzer will most likely classify all components as "Unknown intra/extra", corresponding to components of an unknown type on the Hoechst channel and the SYTOX channel. It's now time to specify the features for each component type.  
+
+First, hover the cursor over several NETs to check their size, brightness on the SYTOX channel, and the SD of brighntess. Use those values to specify the acceptable interval of each feature for a NET.  
+You don't need to input exact values at this point - approximate values are sufficient. Inspecting selected NETs is supposed to give you an overall idea of what the acceptable intervals should be.
+
+![](Figs/5.png)
+
+If you set the acceptable intervals for all three features of NETs and click "Execute", Trapalyzer will update its annotation. The update should be reflected in changed colors of the annotations of NETs and increased quality score. Hover the mouse cursor over one of them to verify that the "Unknown extra" category has changed into the "NET" category.  
+
+Now, select the second image (by clicking *raw image* under the second filename in the *Multiple files* window on the left-hand side), click *Execute* again, and check if you need to update the parameters of NETs.  
+Trapalyzer should already classify most NETs properly. In this case, move on to the next image. Do not update the parameters if only one small NET is misclassified to avoid overfitting the software to a single image.  
+
+Now, select the sixth image. This image contains mostly unstimulated neutrophils (PMN neu). If needed, disable the green channel (if the channel is almost empty, PartSeg may overinflate its brightness).  
+Click Execute. All cells will initially be classified as Unknown intra.  
+Hover the mouse cursor over some of the detected cells to get the appropriate intervals for the brightness, size, extracellular brightness and brightness gradient for the PMN neu class. 
+Try to achieve the annotation quality between 80% and 95%. The partial scores for features (highlighted on the right-hand side of the image below) will tell, on a scale from 0 to 1, how well this feature matches the appropriate interval of the given type of cells.  
+Select the fifth image and validate your parameters for the PMN neutrophils.  
+
+![](Figs/fig6.png)
+
+Repeat this process for the other images and classes of cells that you want to detect.  
+Trapalyzer allows to define up to four classes of cells, which are assumed to be:
+
+- Polymorphonuclear, unstimulated neutrophils (PMN neu),
+- Neutrophils with decondensed chromatin and/or partially rounded nucleus (RND neu),
+- Neutrophils with ruptured nuclear envelope (NER neu),
+- Neutrophils with permeabilized plasma membrane (PMP neu).
+
+See the supplementary material for the Trapalyzer application note for examples of cells from each class.  
+Trapalyzer does not set any limitations for the parameters of any particular class of cells, so you may adjust them according to the needs of your experiment.  
+
+The next section describes how to save and load pre-defined sets of parameters, called *profiles*.  
+
+## Loading profiles
+
+At any step, you can save your set of parameters, called a *profile*, by clicking the *Save profile* button.  
+Trapalyzer also allows you to load a pre-defined profile. An example profile for the data set analyzed in this tutorial is available in the file `example_profile.json`.  
 
 
