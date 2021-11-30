@@ -146,6 +146,7 @@ class NetPercent(MeasurementMethodBase):
 
     @staticmethod
     def calculate_property(roi_alternative, **kwargs):
+        kwargs.pop("area_array")
         area_array = roi_alternative[LABELING_NAME]
         return (
             measurement_calculation.Volume.calculate_property(area_array == NeuType.NET, **kwargs)
@@ -193,7 +194,7 @@ class QualityMeasure(MeasurementMethodBase):
         if total_segmented_voxels == 0:
             return "0%"
         assert unknown_voxels <= total_segmented_voxels
-        quality = (1 - unknown_voxels / total_segmented_voxels) 
+        quality = 1 - unknown_voxels / total_segmented_voxels
         quality = round(100 * quality)
         return f"{quality}%"
 
