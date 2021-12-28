@@ -1,5 +1,6 @@
 ## Analyzing microscopic images with Trapalyzer
-This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the batch mode.   
+This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the interactive mode, as well as importing and exporting the parameters.  
+For batch processing of images, please refer to the PartSeg tutorial.   
 
 A sample data set used in this tutorial can be downloaded [here](https://github.com/krzysztoffiok/CNN-based-image-analysis-for-detection-and-quantification-of-neutrophil-extracellular-traps/tree/master/images). Download and unpack the `large_validation_set.zip` file from the link in your working directory.  
 
