@@ -78,9 +78,16 @@ Trapalyzer does not set any limitations for the parameters of any particular cla
 
 The next section describes how to save and load pre-defined sets of parameters, called *profiles*.  
 
-## Loading profiles
+## Importing and exporting profiles
 
 At any step, you can save your set of parameters, called a *profile*, by clicking the *Save profile* button.  
-Trapalyzer also allows you to load a pre-defined profile. An example profile for the data set analyzed in this tutorial is available in the file `example_profile.json`.  
+Trapalyzer also allows you to load a pre-defined profile.  
+An example profile for the data set analyzed in this tutorial is available in the file `example_profile.json`.  
 
+In order to import profiles from a file, click on *Import profile* in the *Settings and Measurements* window (regions number 1, 2 and 3 in the image below) and select an appropriate file, e.g. the `example_profile.json` file. After you import this file, you will be able to select a profile called `neutrofile_cnn_orygsize` in the profile selection window (number 5 in the image below). 
+Selecting a profile will automatically update the parameters of Trapalyzer.  
+
+If you have specified your own set of parameters that you want to save as a profile for future sessions of Trapalyzer, simply click the *Save profile* button (next to region number 5 in the image below) and type the name of the profile. Exporting profiles allows you to share them with other users. To export a profile, open the *Settings and Measurements* window and click on the *Export profile* button (numbers 1 and 3 in the image below). Select profiles that you want to export, click *Export* (number 4 in the image below) and save them in a file.    
+
+![](Figs/fig7.png)
 
