@@ -6,6 +6,8 @@ A sample data set used in this tutorial can be downloaded [here](https://github.
 
 After unpacking, the data set used in this tutorial is located in the directory `large_validation_set/xml_pascal_voc_format/images/oryg`. 
 
+If you need help with this tutorial or have any questions or suggestions about Trapalyzer, feel free to post a GitHub issue or e-mail us at m.ciach@mimuw.edu.pl or g.bokota@cent.uw.edu.pl.
+
 ## Interactive mode
 Interactive session of PartSeg is used to analyze single images and to tune the parameters of Trapalyzer.  
 
