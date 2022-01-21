@@ -94,3 +94,41 @@ If you have specified your own set of parameters that you want to save as a prof
 
 ![](Figs/fig7.png)
 
+## Batch mode
+The batch mode is used to process multiple images at once. It uses a user-defined profile to automatically annotate a set of images and generate an Excel .xlsx file with the results of the annotation.   
+You can decide whether you want to obtain summarized image-wise information (e.g. number of NETs in each photograph), component-wise information (e.g. sizes of individual NETs in each photograph), or both.  
+
+First, to use the batch processing mode, you need to create a *measurement plan*.  
+This will tell Trapalyzer what information you want to get for each image.  
+To create or edit a measurement plan, go to *Settings and measurements -> Measurement settings* (regions 1, 2 in the image below). 
+
+Select the parameters that you want to save from the list in the lower left part of the window.  
+Parameters designed specifically for Trapalyzer have a `[Trapalyzer]` prefix in their names. You can also use the generic parameters (the ones without the `[Trapalyzer]` prefix in their name), such as lengths of principal axes for each component.  
+Add the selected parameter to your list using the right arrow (region 3). You can reorder your list using the top and bottom arrows or remove selected parameters from the list by clicking the Remove button (region 4).  
+
+For example, to get the areas of NETs in each image, select `[Trapalyzer] ROI Component type area` and click the right arrow.  
+Trapalyzer will show you a pop-up window with a list of component types.  
+Select NET from the list in the pop-up window and click `Save`. In the lower right part of the measurement plan editing window, you will now have an item called `[Trapalyzer] ROI Component type area [Component type=NET]` as a part of your measurement plan.  
+
+After you have created your measurement plan, enter its name (region 5) and click Save (region 6).  
+Your new measurement plan will now be visible in the list of measurement plans in the top right part of the measurement plan editing window.  
+
+![](Figs/fig8.png)
+
+Now, you need to prepare a *workflow*. A PartSeg workflow is essentially a combination of a profile (which tells PartSeg how to classify objects) and a measurement plan (which tells PartSeg what information about those objects to report).  
+You can use one or more profiles and one or more measurement plans for each profile.  
+PartSeg will report results for each measurement plan and each profle in a workflow.  
+
+To create a workflow, go to *Batch Processing -> Prepare workflow* (regions 1, 2 in the image below).   
+Select a profile from the *ROI extraction* window (region 3) and click *Add Profile*.   
+Next, select a measurement plan from the *Set of measurements* window (region 4) and click *Add measurement calculation*.  
+You may inspect or edit your workflow in the *Prepare workflow* window (region 5).   
+Finally, save your profile (region 6).  
+Note: If the *Add measurement calculation* button is inactive, you most likely need to select a profile with which you want to associate the measurement plan. You can do this by clicking the profile in the *Prepare workflow* window (profile names are prepended with a *Segmentation* keyword in this window).  
+
+![](Figs/fig9.png)
+
+After you have created a measurement plan and a workflow, you can select files which you want to analyze.  
+Go to *Batch Processing -> Input files* (regions 1, 2 in the image below).  
+
+TBD
