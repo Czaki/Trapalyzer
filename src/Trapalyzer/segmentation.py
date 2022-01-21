@@ -120,10 +120,12 @@ class Trapalyzer(NeutrofileSegmentationBase):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.count_dict = Counter()
+        self.area_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
         self.quality = 0
+        self.image_size = 0
 
     def classify_nets(self, outer_dna_mask, cleaned_inner, cleaned_outer, net_size):
         nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
@@ -187,6 +189,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         self.other = 0
         self.net_size = 0
         inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
+        self.image_size = inner_dna_channel.shape[0]*inner_dna_channel.shape[1]*inner_dna_channel.shape[2]
         inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
         cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
             inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
@@ -228,6 +231,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         unknown_net_components = [k for k, v in net_annotation.items() if v[CATEGORY_STR] != NeuType.NET]
 
         self.count_dict[NeuType.NET] = len(nets_components)
+        
         self.count_dict[NeuType.Unknown_extra] = len(unknown_net_components)
 
         result_labeling[np.isin(outer_dna_components, nets_components)] = NeuType.NET.value
@@ -241,8 +245,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
         for val in NeuType.all_components():
             alternative_representation[str(val)] = (result_labeling == val.value).astype(np.uint8) * val.value
         self.net_size = np.count_nonzero(alternative_representation[str(NeuType.NET)])
+        self.area_dict[NeuType.NET] = self.net_size
+        
         from .measurement import QualityMeasure
-
         self.quality = QualityMeasure.calculate_property(inner_dna_components, roi_annotation)
         return SegmentationResult(
             inner_dna_components,
@@ -261,6 +266,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         )
 
     def _classify_neutrofile(self, inner_dna_components, cleaned_inner, cleaned_outer):
+        self.cell_count = 0
         laplacian_image = _laplacian_estimate(cleaned_inner, 1.3)
         annotation = {}
         labeling = np.zeros(inner_dna_components.shape, dtype=np.uint16)
@@ -295,7 +301,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 # "area to circumference": voxels / len(component_border_coords[0]),
                 # "signal colocalization": colocalization1,
                 "circularity": 3 * np.pi * voxels / perimeter ** 2,  # inspired by NETQUANT approach
-                "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
+                # "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
             }
             annotation[val] = dict(
                 {"component_id": val, CATEGORY_STR: NeuType.Unknown_intra},
@@ -327,14 +333,20 @@ class Trapalyzer(NeutrofileSegmentationBase):
             else:
                 labeling[inner_dna_components == val] = score_list[-1][1].value
                 self.count_dict[score_list[-1][1]] += 1
+                self.cell_count += 1
+                self.area_dict[score_list[-1][1]] += voxels
                 annotation[val][CATEGORY_STR] = score_list[-1][1]
-
+               
         return labeling, annotation
 
     def get_info_text(self):
         return (
-            ", ".join(f"{name}: {self.count_dict[name]}" for name in NeuType.all_components())
-            + f"\nQuality: {self.quality}"
+            f"Annotation quality: {self.quality}" +
+            "\n" +
+            "\n".join(f"{name}: {self.count_dict[name]}, {self.area_dict[name]} px ({round(100*self.area_dict[name]/self.image_size, 2)}% image area)" for name in [NeuType.NET, NeuType.Unknown_extra] ) +
+            "\n" +
+            "\n".join(f"{name}: {self.count_dict[name]} ({round(100*self.count_dict[name]/self.cell_count, 2)} % cells), {self.area_dict[name]} px ({round(100*self.area_dict[name]/self.image_size, 2)}% image area)" for name in NeuType.neutrofile_components()) 
+            
         )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
