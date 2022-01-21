@@ -1,6 +1,5 @@
 ## Analyzing microscopic images with Trapalyzer
-This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the interactive mode, as well as importing and exporting the parameters.  
-For batch processing of images, please refer to the PartSeg tutorial.   
+This tutorial describes how to analyze a data set of fluorescence microscopy images with Trapalyzer. It covers the process of tuning the software parameters and processing images in the interactive mode, importing and exporting the parameters, and processing multiple images in the batch processing mode.  
 
 A sample data set used in this tutorial can be downloaded [here](https://github.com/krzysztoffiok/CNN-based-image-analysis-for-detection-and-quantification-of-neutrophil-extracellular-traps/tree/master/images). Download and unpack the `large_validation_set.zip` file from the link in your working directory.  
 
@@ -94,7 +93,7 @@ If you have specified your own set of parameters that you want to save as a prof
 
 ![](Figs/fig7.png)
 
-## Batch mode
+## Batch processing mode
 The batch mode is used to process multiple images at once. It uses a user-defined profile to automatically annotate a set of images and generate an Excel .xlsx file with the results of the annotation.   
 You can decide whether you want to obtain summarized image-wise information (e.g. number of NETs in each photograph), component-wise information (e.g. sizes of individual NETs in each photograph), or both.  
 
@@ -128,7 +127,15 @@ Note: If the *Add measurement calculation* button is inactive, you most likely n
 
 ![](Figs/fig9.png)
 
-After you have created a measurement plan and a workflow, you can select files which you want to analyze.  
-Go to *Batch Processing -> Input files* (regions 1, 2 in the image below).  
+After you have created a measurement plan and a workflow, you can select files which you want to analyze and run the analysis.  
+Go to *Batch Processing -> Input files* (regions 1, 2 in the image below).   
+Click on *Select files* to select the files that you want to analyze (region 3). After you select the files, their names will be displayed in the window.  
+Select the workflow that you want to use (region 4) and specify the name of the output file (region 5).   
+You may additionally adjust the number of PartSeg processes to speed up the processing.   
+Click *Process* (region 6). PartSeg will display a pop-up window where you can optionally modify some of the parameters of the analysis, such as the name of the Excel sheet with the results. Click *Execute* in the pop-up window to run the analysis.   
 
-TBD
+
+![](Figs/fig10.png)
+
+
+
