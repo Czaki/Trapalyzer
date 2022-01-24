@@ -185,6 +185,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
 
     def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
         self.count_dict = Counter()
+        self.area_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
