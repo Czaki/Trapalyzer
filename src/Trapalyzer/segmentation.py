@@ -303,7 +303,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 # "circumference": len(component_border_coords[0]),
                 # "area to circumference": voxels / len(component_border_coords[0]),
                 # "signal colocalization": colocalization1,
-                "circularity": 3 * np.pi * voxels / perimeter ** 2,  # inspired by NETQUANT approach
+                "circularity": 3 * np.pi * voxels / perimeter**2,  # inspired by NETQUANT approach
                 # "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
             }
             annotation[val] = dict(
@@ -501,10 +501,10 @@ def gaussian_score_function(x, lbound, ubound, softness=0.5):
     if x <= lbound - 3.5 * sd_l or x >= ubound + 3.5 * sd_u:
         return 0.0
     if lbound - 3.5 * sd_l <= x <= lbound:
-        logscore = -0.5 * (lbound - x) ** 2 / sd_l ** 2
+        logscore = -0.5 * (lbound - x) ** 2 / sd_l**2
         return np.exp(logscore)
     if ubound <= x <= ubound + 3.5 * sd_u:
-        logscore = -0.5 * (x - ubound) ** 2 / sd_u ** 2
+        logscore = -0.5 * (x - ubound) ** 2 / sd_u**2
         return np.exp(logscore)
 
 
@@ -539,8 +539,8 @@ def new_sphericity(component: np.ndarray, voxel_size):
     area = np.count_nonzero(component) * voxel_area
     coordinates = np.transpose(np.nonzero(component)) * voxel_size - center
     radius_square = area / np.pi
-    return np.sum(np.sum(coordinates ** 2, axis=1) <= radius_square) / (
-        area / voxel_area + np.sum(np.sum(coordinates ** 2, axis=1) > radius_square)
+    return np.sum(np.sum(coordinates**2, axis=1) <= radius_square) / (
+        area / voxel_area + np.sum(np.sum(coordinates**2, axis=1) > radius_square)
     )
 
 
@@ -565,8 +565,8 @@ def curvature(x, y, *args):
     k = np.zeros(n)
     for i in range(n):
         ddx = x[(i + 1) % n] + x[(i - 1) % n] - 2 * x[i]
-        ddx *= n ** 2
+        ddx *= n**2
         ddy = y[(i + 1) % n] + y[(i - 1) % n] - 2 * y[i]
-        ddy *= n ** 2
-        k[i] = np.sqrt(ddx ** 2 + ddy ** 2)
+        ddy *= n**2
+        k[i] = np.sqrt(ddx**2 + ddy**2)
     return k
