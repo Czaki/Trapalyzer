@@ -149,8 +149,8 @@ class NetPercent(MeasurementMethodBase):
         kwargs.pop("area_array")
         area_array = roi_alternative[LABELING_NAME]
         return (
-            measurement_calculation.Volume.calculate_property(area_array == NeuType.NET, **kwargs)
-            / measurement_calculation.Volume.calculate_property(area_array >= 0, **kwargs)
+            measurement_calculation.Volume.calculate_property(area_array == NeuType.NET.value, **kwargs)
+            / measurement_calculation.Volume.calculate_property(area_array, **kwargs)
             * 100
         )
 
