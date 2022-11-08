@@ -52,5 +52,4 @@ def napari_experimental_provide_function3():
 @napari_hook_implementation
 def napari_get_reader(path: str):
     if os.path.splitext(path)[1] == ".xml":
-        print("aaaa")
         return load_annnotation

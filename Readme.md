@@ -1,6 +1,6 @@
 # Trapalyzer
 
-Trapalyzer is a PartSeg plugin for automatic feature detection and
+Trapalyzer is a PartSeg and napari plugin for automatic feature detection and
 quantification for in-vitro NET release studies.
 
 ## Installation

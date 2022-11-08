@@ -6,12 +6,19 @@ from sympy import symbols
 from PartSegCore.algorithm_describe_base import AlgorithmProperty
 from PartSegCore.analysis import measurement_calculation
 from PartSegCore.analysis.measurement_base import AreaType, Leaf, MeasurementMethodBase, PerComponent
+from PartSegCore.utils import BaseModel
 
 from .segmentation import CATEGORY_STR, LABELING_NAME, PARAMETER_TYPE_LIST, SCORE_SUFFIX, NeuType
 
 
+class ComponentClassParameters(BaseModel):
+    component_type: NeuType = NeuType.PMN_neu
+
+
 class ComponentArea(MeasurementMethodBase):
     text_info = "Component type area", "Calculate area of given component type"
+
+    __argument_class__ = ComponentClassParameters
 
     @classmethod
     def get_units(cls, ndim):
@@ -21,12 +28,8 @@ class ComponentArea(MeasurementMethodBase):
     def get_starting_leaf(cls):
         return Leaf(name=cls.text_info[0], area=AreaType.ROI, per_component=PerComponent.No)
 
-    @classmethod
-    def get_fields(cls):
-        return [AlgorithmProperty("component_type", "Component type", NeuType.PMN_neu, possible_values=NeuType)]
-
     @staticmethod
-    def calculate_property(roi_alternative, component_type, **kwargs):
+    def calculate_property(roi_alternative, component_type: NeuType, **kwargs):
         area_array = roi_alternative[LABELING_NAME]
         kwargs = dict(kwargs)
         del kwargs["area_array"]
@@ -36,13 +39,11 @@ class ComponentArea(MeasurementMethodBase):
 class ComponentVoxels(MeasurementMethodBase):
     text_info = "Component type pixels", "Calculate number of voxels of given component type"
 
+    __argument_class__ = ComponentClassParameters
+
     @classmethod
     def get_units(cls, ndim):
         return measurement_calculation.Voxels.get_units(ndim)
-
-    @classmethod
-    def get_fields(cls):
-        return [AlgorithmProperty("component_type", "Component type", NeuType.PMN_neu, possible_values=NeuType)]
 
     @staticmethod
     def calculate_property(roi_alternative, component_type, **kwargs):
@@ -55,6 +56,8 @@ class ComponentVoxels(MeasurementMethodBase):
 class ComponentCount(MeasurementMethodBase):
     text_info = "Component type count", "Count elements of given component type"
 
+    __argument_class__ = ComponentClassParameters
+
     @classmethod
     def get_units(cls, ndim):
         return 1
@@ -66,10 +69,6 @@ class ComponentCount(MeasurementMethodBase):
     @classmethod
     def calculate_property(cls, area_array, roi_alternative, component_type, **kwargs):
         return len(np.unique(area_array[roi_alternative[LABELING_NAME] == component_type.value]))
-
-    @classmethod
-    def get_fields(cls):
-        return [AlgorithmProperty("component_type", "Component type", NeuType.PMN_neu, possible_values=NeuType)]
 
 
 class ClassifyNeutrofile(MeasurementMethodBase, ABC):
