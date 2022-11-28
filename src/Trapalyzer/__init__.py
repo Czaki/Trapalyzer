@@ -28,6 +28,7 @@ def register():
         importlib.reload(widgets)
     # register_fun(segmentation.NeutrofileSegmentation, RegisterEnum.analysis_algorithm)
     register_fun(segmentation.Trapalyzer, RegisterEnum.analysis_algorithm)
+    register_fun(segmentation.TrapalyzerSimple, RegisterEnum.analysis_algorithm)
     register_fun(measurement.ComponentArea, RegisterEnum.analysis_measurement)
     register_fun(measurement.NetPercent, RegisterEnum.analysis_measurement)
     register_fun(measurement.ComponentCount, RegisterEnum.analysis_measurement)

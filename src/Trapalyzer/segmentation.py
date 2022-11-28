@@ -4,6 +4,7 @@ from abc import ABC
 from collections import Counter
 from enum import Enum
 from itertools import product
+from typing import Callable
 
 import numpy as np
 import SimpleITK as sitk
@@ -19,7 +20,7 @@ from PartSegCore.channel_class import Channel
 from PartSegCore.class_generator import enum_register
 from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
-from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
+from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, ROIExtractionResult
 from PartSegCore.segmentation.noise_filtering import NoiseFilterSelection
 from PartSegCore.segmentation.threshold import BaseThreshold, ThresholdSelection
 from PartSegCore.utils import BaseModel
@@ -258,7 +259,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
             i += 1
         return nets, annotation
 
-    def calculation_run(self, report_fun: typing.Callable[[str, int], None]) -> SegmentationResult:
+    def calculation_run(self, report_fun: typing.Callable[[str, int], None]) -> ROIExtractionResult:
         self.count_dict = Counter()
         self.area_dict = Counter()
         self.nets = 0
@@ -325,9 +326,9 @@ class Trapalyzer(NeutrofileSegmentationBase):
         from .measurement import QualityMeasure
 
         self.quality = QualityMeasure.calculate_property(inner_dna_components, roi_annotation)
-        return SegmentationResult(
-            inner_dna_components,
-            self.get_segmentation_profile(),
+        return ROIExtractionResult(
+            roi=inner_dna_components,
+            parameters=self.get_segmentation_profile(),
             alternative_representation=alternative_representation,
             roi_annotation=roi_annotation,
             additional_layers={
@@ -444,96 +445,78 @@ class Trapalyzer(NeutrofileSegmentationBase):
     def get_name(cls) -> str:
         return "Trapalyzer"
 
-    # @classmethod
-    # def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-    #     initial = list(
-    #         chain(
-    #             *(
-    #                 [
-    #                     AlgorithmProperty(
-    #                         f"{prefix.name.lower()}_{suffix}",
-    #                         f"{prefix} {suffix}",
-    #                         {"lower_bound": 0, "upper_bound": 1},
-    #                         property_type=TrapezoidWidget,
-    #                         help_text=f"{DESCRIPTION_DICT[prefix]} {suffix}",
-    #                     )
-    #                     for suffix in PARAMETER_TYPE_LIST
-    #                 ]
-    #                 + ["-------------------"]
-    #                 for prefix in NeuType.neutrofile_components()
-    #             )
-    #         )
-    #     ) + [
-    #         AlgorithmProperty("minimum_score", "Minimum score", 0.8),
-    #         AlgorithmProperty("maximum_other", "Maximum competing score", 0.4),
-    #         AlgorithmProperty(
-    #             "minimum_size", "Minimum comp. pixel count", 40, (1, 9999), help_text="Minimum component pixel count"
-    #         ),
-    #         AlgorithmProperty("softness", "Error margin coeficient", 0.1, (0, 1)),
-    #     ]
-    #
-    #     thresholds = [
-    #         AlgorithmProperty("inner_dna", "All DNA channel", 1, property_type=Channel),
-    #         AlgorithmProperty(
-    #             "inner_dna_noise_filtering",
-    #             "Filter type",
-    #             next(iter(noise_filtering_dict.keys())),
-    #             possible_values=noise_filtering_dict,
-    #             value_type=AlgorithmDescribeBase,
-    #         ),
-    #         AlgorithmProperty(
-    #             "inner_threshold",
-    #             "Threshold type",
-    #             next(iter(threshold_dict.keys())),
-    #             possible_values=threshold_dict,
-    #             property_type=AlgorithmDescribeBase,
-    #         ),
-    #         AlgorithmProperty("outer_dna", "Extracellural DNA channel", 1, property_type=Channel),
-    #         AlgorithmProperty(
-    #             "outer_dna_noise_filtering",
-    #             "Filter type",
-    #             next(iter(noise_filtering_dict.keys())),
-    #             possible_values=noise_filtering_dict,
-    #             value_type=AlgorithmDescribeBase,
-    #         ),
-    #         AlgorithmProperty(
-    #             "outer_threshold",
-    #             "Threshold type",
-    #             next(iter(threshold_dict.keys())),
-    #             possible_values=threshold_dict,
-    #             property_type=AlgorithmDescribeBase,
-    #         ),
-    #         AlgorithmProperty(
-    #             "net_size",
-    #             "NET pixel count",
-    #             {"lower_bound": 850, "upper_bound": 999999},
-    #             property_type=TrapezoidWidget,
-    #         ),
-    #         AlgorithmProperty(
-    #             "net_ext_brightness",
-    #             "NET extracellular brightness",
-    #             {"lower_bound": 21, "upper_bound": 100},
-    #             property_type=TrapezoidWidget,
-    #         ),
-    #         # AlgorithmProperty(
-    #         #     "net_brightness_gradient",
-    #         #     "NET ext. brightness gradient",
-    #         #     {"lower_bound": -1.0, "upper_bound": 1.0},
-    #         #     property_type=TrapezoidWidget,
-    #         # ),
-    #         AlgorithmProperty(
-    #             "net_ext_brightness_std",
-    #             "NET ext. brightness SD",
-    #             {"lower_bound": 0.0, "upper_bound": 1.0},
-    #             property_type=TrapezoidWidget,
-    #         ),
-    #         AlgorithmProperty(
-    #             "unknown_net", "detect extracellular artifacts", True, help_text="If mark unknown net components"
-    #         ),
-    #         "-----------------------",
-    #     ]
-    #
-    #     return thresholds + initial
+
+class TrapalyzerSimpleParameters(BaseModel):
+    inner_dna: Channel = Field(1, title="All DNA channel")
+    inner_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    inner_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold type")
+    outer_dna: Channel = Field(1, title="Extracellural DNA channel")
+    outer_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    dead_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Thr. dead neu")
+    net_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold NET")
+    minimum_size: int = Field(
+        40, title="Minimum comp. pixel count", description="Minimum component pixel count", ge=1, le=9999
+    )
+
+
+class TrapalyzerSimple(NeutrofileSegmentationBase):
+    __argument_class__ = TrapalyzerSimpleParameters
+    new_parameters: TrapalyzerSimpleParameters
+
+    def calculation_run(self, report_fun: Callable[[str, int], None]) -> ROIExtractionResult:
+        inner_dna_channel = self.get_channel(self.new_parameters.inner_dna)
+        inner_noise_filtering_parameters = self.new_parameters.inner_dna_noise_filtering
+        cleaned_inner = NoiseFilterSelection[inner_noise_filtering_parameters.name].noise_filter(
+            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters.values
+        )
+        inner_dna_mask, thr_val = self._calculate_mask(cleaned_inner, self.new_parameters.inner_threshold)
+
+        outer_dna_channel = self.get_channel(self.new_parameters.outer_dna)
+        outer_noise_filtering_parameters = self.new_parameters.outer_dna_noise_filtering
+        cleaned_outer = NoiseFilterSelection[outer_noise_filtering_parameters.name].noise_filter(
+            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters.values
+        )
+        dead_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, self.new_parameters.dead_threshold)
+        net_dna_mask, net_thr_val = self._calculate_mask(cleaned_outer, self.new_parameters.net_threshold)
+
+        inner_dna_components = self._calc_components(inner_dna_mask, self.new_parameters.minimum_size, close_holes=100)
+
+        labeled_neu, roi_annotation = self._classify_neutrofile(inner_dna_components, dead_dna_mask)
+
+        net_dna_mask[inner_dna_components > 0] = 0
+        net_components = self._calc_components(net_dna_mask, self.new_parameters.minimum_size, close_holes=100)
+
+        cmp_max = inner_dna_components.max()
+        for i in range(cmp_max + 1, cmp_max + net_components.max() + 1):
+            roi_annotation[i] = {CATEGORY_STR: 3}
+
+        labeled_neu[net_components > 0] = 3
+        inner_dna_components[net_components > 0] = net_components[net_components > 0] + cmp_max
+
+        return ROIExtractionResult(
+            roi=inner_dna_components,
+            parameters=self.get_segmentation_profile(),
+            alternative_representation={LABELING_NAME: labeled_neu},
+            roi_annotation=roi_annotation,
+        )
+
+    def _classify_neutrofile(self, inner_dna_components, dead_dna_mask):
+        bounds = ROIInfo.calc_bounds(inner_dna_components)
+        mapping = np.arange(0, np.max(inner_dna_components) + 1, dtype=np.uint16)
+        annotation = {}
+        for val in np.unique(inner_dna_components):
+            if val == 0:
+                continue
+            slices = tuple(bounds[val].get_slices(margin=5))
+            component_mask = inner_dna_components[slices] == val
+            dead_mask = dead_dna_mask[slices]
+            mapping[val] = 2 if np.any(component_mask * dead_mask) else 1
+            annotation[val] = {CATEGORY_STR: mapping[val]}
+        return mapping[inner_dna_components], annotation
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "Trapalyzer simple"
 
 
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
