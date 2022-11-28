@@ -21,7 +21,7 @@ from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
 from PartSegCore.segmentation.noise_filtering import NoiseFilterSelection
-from PartSegCore.segmentation.threshold import BaseThreshold, ThresholdSelection, threshold_dict
+from PartSegCore.segmentation.threshold import BaseThreshold, ThresholdSelection
 from PartSegCore.utils import BaseModel
 
 from .widgets import TrapezoidRange
@@ -94,7 +94,7 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
         return False
 
     def _calculate_mask(self, channel, threshold_info):
-        thr: BaseThreshold = threshold_dict[threshold_info.name]
+        thr: BaseThreshold = ThresholdSelection[threshold_info.name]
         mask, thr_val = thr.calculate_mask(channel, self.mask, threshold_info.values, operator.gt)
         return mask, thr_val
 
