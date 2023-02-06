@@ -16,7 +16,6 @@ from pydantic import Field
 from PartSegCore.algorithm_describe_base import ROIExtractionProfile
 from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
-from PartSegCore.channel_class import Channel
 from PartSegCore.class_generator import enum_register
 from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
@@ -24,6 +23,7 @@ from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, 
 from PartSegCore.segmentation.noise_filtering import NoiseFilterSelection
 from PartSegCore.segmentation.threshold import BaseThreshold, ThresholdSelection
 from PartSegCore.utils import BaseModel
+from PartSegImage.channel_class import Channel
 
 from .widgets import TrapezoidRange
 
