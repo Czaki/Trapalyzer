@@ -16,7 +16,6 @@ from pydantic import Field
 from PartSegCore.algorithm_describe_base import ROIExtractionProfile
 from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
-from PartSegCore.class_generator import enum_register
 from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
 from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, ROIExtractionResult
@@ -28,6 +27,7 @@ from PartSegImage.channel_class import Channel
 from .widgets import TrapezoidRange
 
 
+@register_class
 class NeuType(Enum):
     PMN_neu = 1
     RND_neu = 2
@@ -62,7 +62,7 @@ try:
     reloading
 except NameError:
     reloading = False  # means the module is being imported
-    enum_register.register_class(NeuType)
+
 
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
