@@ -69,6 +69,7 @@ Now, select the second image (by clicking *raw image* under the second filename 
 Trapalyzer should already classify most NETs properly. In this case, move on to the next image. Do not update the parameters if only one small NET is misclassified to avoid overfitting the software to a single image.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Now, select the sixth image. This image contains mostly unstimulated neutrophils (PMN neu).  
 If needed, disable the green channel (if the channel is almost empty, PartSeg may overinflate its brightness).  
 Click Execute. All cells will initially be classified as Unknown intra.  
@@ -76,11 +77,16 @@ Hover the mouse cursor over some of the detected cells to get the appropriate in
 Try to achieve the annotation quality between 80% and 95%. The partial scores for features (highlighted on the right-hand side of the image below) will tell, on a scale from 0 to 1, how well this feature matches the appropriate interval of the given type of cells.  
 Select the fifth image and validate your parameters for the PMN neutrophils.  
 =======
+=======
+>>>>>>> 3f4e6c26097cc32a1982707b66096abc602187b0
 Now, select the sixth image. This image contains mostly unstimulated neutrophils (PMN neu). If needed, disable the green channel (if the channel is almost empty, PartSeg may overinflate its brightness).
 Click Execute. All cells will initially be classified as Unknown intra.
 Hover the mouse cursor over some of the detected cells to get the appropriate intervals for the brightness, size, extracellular brightness and brightness gradient for the PMN neu class.
 Try to achieve the annotation quality between 80% and 95%. The partial scores for features (highlighted on the right-hand side of the image below) will tell, on a scale from 0 to 1, how well this feature matches the appropriate interval of the given type of cells.
 Select the fifth image and validate your parameters for the PMN neutrophils.
+<<<<<<< HEAD
+>>>>>>> 3f4e6c26097cc32a1982707b66096abc602187b0
+=======
 >>>>>>> 3f4e6c26097cc32a1982707b66096abc602187b0
 
 ![](Figs/fig6.png)

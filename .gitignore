@@ -257,3 +257,4 @@ tags
 .history
 
 # End of https://www.gitignore.io/api/vim,python,pycharm,jupyternotebook,visualstudiocode,jupyternotebooks
+.partseg_settings

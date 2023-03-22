@@ -28,6 +28,7 @@ def register():
         importlib.reload(widgets)
     # register_fun(segmentation.NeutrofileSegmentation, RegisterEnum.analysis_algorithm)
     register_fun(segmentation.Trapalyzer, RegisterEnum.analysis_algorithm)
+    register_fun(segmentation.TrapalyzerSimple, RegisterEnum.analysis_algorithm)
     register_fun(measurement.ComponentArea, RegisterEnum.analysis_measurement)
     register_fun(measurement.NetPercent, RegisterEnum.analysis_measurement)
     register_fun(measurement.ComponentCount, RegisterEnum.analysis_measurement)
@@ -52,5 +53,4 @@ def napari_experimental_provide_function3():
 @napari_hook_implementation
 def napari_get_reader(path: str):
     if os.path.splitext(path)[1] == ".xml":
-        print("aaaa")
         return load_annnotation

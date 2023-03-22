@@ -3,28 +3,31 @@ import typing
 from abc import ABC
 from collections import Counter
 from enum import Enum
-from itertools import chain, product
+from itertools import product
 from typing import Callable
 
 import numpy as np
 import SimpleITK as sitk
 from napari.layers import Image
 from napari.types import LayerDataTuple
+from nme import REGISTER, class_to_str, register_class
+from pydantic import Field
 
-from PartSegCore.algorithm_describe_base import AlgorithmDescribeBase, AlgorithmProperty, ROIExtractionProfile
+from PartSegCore.algorithm_describe_base import ROIExtractionProfile
 from PartSegCore.analysis.measurement_calculation import Diameter, get_border
 from PartSegCore.autofit import density_mass_center
-from PartSegCore.channel_class import Channel
-from PartSegCore.class_generator import enum_register
 from PartSegCore.roi_info import ROIInfo
 from PartSegCore.segmentation import RestartableAlgorithm
-from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, SegmentationResult
-from PartSegCore.segmentation.noise_filtering import noise_filtering_dict
-from PartSegCore.segmentation.threshold import BaseThreshold, threshold_dict
+from PartSegCore.segmentation.algorithm_base import AdditionalLayerDescription, ROIExtractionResult
+from PartSegCore.segmentation.noise_filtering import NoiseFilterSelection
+from PartSegCore.segmentation.threshold import BaseThreshold, ThresholdSelection
+from PartSegCore.utils import BaseModel
+from PartSegImage.channel_class import Channel
 
-from .widgets import TrapezoidWidget
+from .widgets import TrapezoidRange
 
 
+@register_class
 class NeuType(Enum):
     PMN_neu = 1
     RND_neu = 2
@@ -59,7 +62,7 @@ try:
     reloading
 except NameError:
     reloading = False  # means the module is being imported
-    enum_register.register_class(NeuType)
+
 
 LABELING_NAME = "Labeling"
 SCORE_SUFFIX = "_score"
@@ -91,11 +94,9 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
     def support_z(cls):
         return False
 
-    def _calculate_mask(self, channel, threshold_name):
-        thr: BaseThreshold = threshold_dict[self.new_parameters[threshold_name]["name"]]
-        mask, thr_val = thr.calculate_mask(
-            channel, self.mask, self.new_parameters[threshold_name]["values"], operator.gt
-        )
+    def _calculate_mask(self, channel, threshold_info):
+        thr: BaseThreshold = ThresholdSelection[threshold_info.name]
+        mask, thr_val = thr.calculate_mask(channel, self.mask, threshold_info.values, operator.gt)
         return mask, thr_val
 
     @staticmethod
@@ -116,8 +117,81 @@ class NeutrofileSegmentationBase(RestartableAlgorithm, ABC):
         return sitk.GetArrayFromImage(components)
 
 
+def _migrate_trapalyzer_sub_fields(dkt):
+    dkt = dkt.copy()
+    cmp_name = [
+        ("pmn_neu", "PMN_neu"),
+        ("rnd_neu", "RND_neu"),
+        ("ner_neu", "NER_neu"),
+        ("pmp_neu", "PMP_neu"),
+        ("bacteria", "Bacteria"),
+    ]
+    parameter_type_list = [
+        ("pixel count", "pixel_count"),
+        ("brightness", "brightness"),
+        ("ext. brightness", "extracellular_brightness"),
+        ("brightness gradient", "brightness_gradient"),
+    ]
+    for cmp_old, cmp_new in cmp_name:
+        data = {new: dkt.pop(f"{cmp_old}_{old}") for old, new in parameter_type_list}
+        data = REGISTER.migrate_data(class_to_str(NeutrophileComponentParameters), {}, data)
+        dkt[cmp_new] = NeutrophileComponentParameters(**data)
+
+    return dkt
+
+
+@register_class(old_paths=["Trapalyzer.segmentation.NeutropeniaComponentParameters"])
+class NeutrophileComponentParameters(BaseModel):
+    pixel_count: TrapezoidRange = Field(default=(0, 1001), title="pixel count")
+    brightness: TrapezoidRange = Field(default=(0, 1000), title="brightness")
+    extracellular_brightness: TrapezoidRange = Field(default=(0, 1000), title="ext. brightness")
+    brightness_gradient: TrapezoidRange = Field(default=(0, 1000), title="brightness gradient")
+
+
+@register_class(version="0.1.0", migrations=[("0.1.0", _migrate_trapalyzer_sub_fields)])
+class TrapalyzerParameters(BaseModel):
+    inner_dna: Channel = Field(1, title="All DNA channel")
+    inner_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    inner_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold type")
+    outer_dna: Channel = Field(1, title="Extracellural DNA channel")
+    outer_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    outer_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold type")
+    net_size: TrapezoidRange = Field((850, 999999), title="NET pixel count")
+    net_ext_brightness: TrapezoidRange = Field((21, 100), title="NET extracellular brightness")
+    net_ext_brightness_std: TrapezoidRange = Field((0.0, 1.0), title="NET ext. brightness SD")
+    unknown_net: bool = Field(
+        True, title="detect extracellular artifacts", description="If mark unknown net components"
+    )
+    PMN_neu: NeutrophileComponentParameters = Field(
+        NeutrophileComponentParameters(), help_text=DESCRIPTION_DICT[NeuType.PMN_neu], title="<strong>PMN neu</strong>"
+    )
+    RND_neu: NeutrophileComponentParameters = Field(
+        NeutrophileComponentParameters(), help_text=DESCRIPTION_DICT[NeuType.RND_neu], title="<strong>RND neu</strong>"
+    )
+    NER_neu: NeutrophileComponentParameters = Field(
+        NeutrophileComponentParameters(), help_text=DESCRIPTION_DICT[NeuType.NER_neu], title="<strong>NER neu</strong>"
+    )
+    PMP_neu: NeutrophileComponentParameters = Field(
+        NeutrophileComponentParameters(), help_text=DESCRIPTION_DICT[NeuType.PMP_neu], title="<strong>PMP neu</strong>"
+    )
+    Bacteria: NeutrophileComponentParameters = Field(
+        NeutrophileComponentParameters(),
+        help_text=DESCRIPTION_DICT[NeuType.Bacteria],
+        title="<strong>Bacteria</strong>",
+    )
+    minimum_score: float = 0.8
+    maximum_other: float = Field(0.4, title="Maximum competing score")
+    minimum_size: int = Field(
+        40, title="Minimum comp. pixel count", description="Minimum component pixel count", ge=1, le=9999
+    )
+    softness: float = Field(0.1, title="Error margin coeficient", ge=0, le=1)
+
+
 class Trapalyzer(NeutrofileSegmentationBase):
-    def __init__(self, *args, **kwargs):
+    __argument_class__ = TrapalyzerParameters
+    new_parameters = TrapalyzerParameters
+
+    def __init__(self):
         super().__init__()
         self.count_dict = Counter()
         self.area_dict = Counter()
@@ -127,8 +201,8 @@ class Trapalyzer(NeutrofileSegmentationBase):
         self.quality = 0
         self.image_size = 0
 
-    def classify_nets(self, outer_dna_mask, cleaned_inner, cleaned_outer, net_size):
-        nets = self._calc_components(outer_dna_mask, int(net_size["lower_bound"]))
+    def classify_nets(self, outer_dna_mask, cleaned_inner, cleaned_outer, net_size: TrapezoidRange):
+        nets = self._calc_components(outer_dna_mask, int(net_size.lower_bound))
         laplacian_outer_image = _laplacian_estimate(cleaned_outer, 1.3)
         annotation = {}
         i = 1
@@ -146,21 +220,23 @@ class Trapalyzer(NeutrofileSegmentationBase):
             brightness_std = np.std(cleaned_outer[component])
             brightness_std_score = sine_score_function(
                 np.std(cleaned_outer[component]),
-                softness=self.new_parameters["softness"],
-                **self.new_parameters["net_ext_brightness_std"],
+                softness=self.new_parameters.softness,
+                **self.new_parameters.net_ext_brightness_std.as_dict(),
             )
             brightness = np.quantile(cleaned_inner[component], 0.9)
             ext_brightness = np.quantile(cleaned_outer[component], 0.9)
             ext_brightness_score = sine_score_function(
-                ext_brightness, softness=self.new_parameters["softness"], **self.new_parameters["net_ext_brightness"]
+                ext_brightness,
+                softness=self.new_parameters.softness,
+                **self.new_parameters.net_ext_brightness.as_dict(),
             )
             voxels = np.count_nonzero(component)
             voxels_score = sine_score_function(
-                voxels, softness=self.new_parameters["softness"], **self.new_parameters["net_size"]
+                voxels, softness=self.new_parameters.softness, **self.new_parameters.net_size.as_dict()
             )
 
-            if voxels_score * ext_brightness_score * brightness_std_score < self.new_parameters["minimum_score"]:
-                if not self.new_parameters["unknown_net"]:
+            if voxels_score * ext_brightness_score * brightness_std_score < self.new_parameters.minimum_score:
+                if not self.new_parameters.unknown_net:
                     nets[component] = 0
                     continue
                 else:
@@ -183,45 +259,44 @@ class Trapalyzer(NeutrofileSegmentationBase):
             i += 1
         return nets, annotation
 
-    def calculation_run(self, report_fun: Callable[[str, int], None]) -> SegmentationResult:
+    def calculation_run(self, report_fun: typing.Callable[[str, int], None]) -> ROIExtractionResult:
         self.count_dict = Counter()
         self.area_dict = Counter()
         self.nets = 0
         self.other = 0
         self.net_size = 0
-        inner_dna_channel = self.get_channel(self.new_parameters["inner_dna"])
-        self.image_size = inner_dna_channel.shape[0]*inner_dna_channel.shape[1]*inner_dna_channel.shape[2]
-        inner_noise_filtering_parameters = self.new_parameters["inner_dna_noise_filtering"]
-        cleaned_inner = noise_filtering_dict[inner_noise_filtering_parameters["name"]].noise_filter(
-            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters["values"]
+        inner_dna_channel = self.get_channel(self.new_parameters.inner_dna)
+        self.image_size = inner_dna_channel.shape[0] * inner_dna_channel.shape[1] * inner_dna_channel.shape[2]
+        inner_noise_filtering_parameters = self.new_parameters.inner_dna_noise_filtering
+        cleaned_inner = NoiseFilterSelection[inner_noise_filtering_parameters.name].noise_filter(
+            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters.values
         )
-        inner_dna_mask, thr_val = self._calculate_mask(cleaned_inner, "inner_threshold")
+        inner_dna_mask, thr_val = self._calculate_mask(cleaned_inner, self.new_parameters.inner_threshold)
 
-        outer_dna_channel = self.get_channel(self.new_parameters["outer_dna"])
-        outer_noise_filtering_parameters = self.new_parameters["outer_dna_noise_filtering"]
-        cleaned_outer = noise_filtering_dict[outer_noise_filtering_parameters["name"]].noise_filter(
-            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters["values"]
+        outer_dna_channel = self.get_channel(self.new_parameters.outer_dna)
+        outer_noise_filtering_parameters = self.new_parameters.outer_dna_noise_filtering
+        cleaned_outer = NoiseFilterSelection[outer_noise_filtering_parameters.name].noise_filter(
+            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters.values
         )
-        outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, "outer_threshold")
+        outer_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, self.new_parameters.outer_threshold)
         outer_dna_components, net_annotation = self.classify_nets(
-            outer_dna_mask, cleaned_inner, cleaned_outer, self.new_parameters["net_size"]
+            outer_dna_mask, cleaned_inner, cleaned_outer, self.new_parameters.net_size
         )
         inner_dna_mask[outer_dna_components > 0] = 0
-        size_param_array = [
-            self.new_parameters[x.name.lower() + "_pixel count"] for x in NeuType.neutrofile_components()
-        ]
+        size_param_array = [getattr(self.new_parameters, x.name).pixel_count for x in NeuType.neutrofile_components()]
+
         min_object_size = int(
             max(
                 5,
                 min(
-                    x["lower_bound"]
-                    - (x["upper_bound"] - x["lower_bound"])
-                    * self.new_parameters["softness"]
-                    * x["lower_bound"]
-                    / (x["upper_bound"] - x["lower_bound"])
+                    x.lower_bound
+                    - (x.upper_bound - x.lower_bound)
+                    * self.new_parameters.softness
+                    * x.lower_bound
+                    / (x.upper_bound - x.lower_bound)
                     for x in size_param_array
                 ),
-                self.new_parameters["minimum_size"],
+                self.new_parameters.minimum_size,
             )
         )
         inner_dna_components = self._calc_components(inner_dna_mask, min_object_size, close_holes=100)
@@ -232,7 +307,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
         unknown_net_components = [k for k, v in net_annotation.items() if v[CATEGORY_STR] != NeuType.NET]
 
         self.count_dict[NeuType.NET] = len(nets_components)
-        
+
         self.count_dict[NeuType.Unknown_extra] = len(unknown_net_components)
 
         result_labeling[np.isin(outer_dna_components, nets_components)] = NeuType.NET.value
@@ -247,12 +322,13 @@ class Trapalyzer(NeutrofileSegmentationBase):
             alternative_representation[str(val)] = (result_labeling == val.value).astype(np.uint8) * val.value
         self.net_size = np.count_nonzero(alternative_representation[str(NeuType.NET)])
         self.area_dict[NeuType.NET] = self.net_size
-        
+
         from .measurement import QualityMeasure
+
         self.quality = QualityMeasure.calculate_property(inner_dna_components, roi_annotation)
-        return SegmentationResult(
-            inner_dna_components,
-            self.get_segmentation_profile(),
+        return ROIExtractionResult(
+            roi=inner_dna_components,
+            parameters=self.get_segmentation_profile(),
             alternative_representation=alternative_representation,
             roi_annotation=roi_annotation,
             additional_layers={
@@ -293,6 +369,7 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 "intensity": np.sum(cleaned_inner[slices][component]),
                 # "homogenity": np.mean(inner_dna_channel[component]) / np.std(inner_dna_channel[component]),
                 "ext. brightness": np.quantile(cleaned_outer[slices][component], 0.9),
+                "ext. brightness SD": np.std(cleaned_outer[slices][component]),
                 #                  "roundness": new_sphericity(component, self.image.voxel_size),
                 #                 "roundness2": voxels / ((diameter ** 2 / 4) * pi),
                 #                 "diameter": diameter,
@@ -301,33 +378,35 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 # "circumference": len(component_border_coords[0]),
                 # "area to circumference": voxels / len(component_border_coords[0]),
                 # "signal colocalization": colocalization1,
-                "circularity": 3 * np.pi * voxels / perimeter ** 2,  # inspired by NETQUANT approach
+                "circularity": 3 * np.pi * voxels / perimeter**2,  # inspired by NETQUANT approach
                 # "circularity2": voxels / ((diameter ** 2 / 4) * np.pi),
             }
             annotation[val] = dict(
                 {"component_id": val, CATEGORY_STR: NeuType.Unknown_intra},
                 **data_dict,
                 **{
-                    f"{prefix} {suffix}": sine_score_function(
-                        data_dict[suffix],
-                        softness=self.new_parameters["softness"],
-                        **self.new_parameters[f"{prefix.name.lower()}_{suffix}"],
+                    f"{prefix} {field.field_info.title}": sine_score_function(
+                        data_dict[field.field_info.title],
+                        softness=self.new_parameters.softness,
+                        **getattr(getattr(self.new_parameters, prefix.name), suffix).as_dict(),
                     )
-                    for prefix, suffix in product(NeuType.neutrofile_components(), PARAMETER_TYPE_LIST)
+                    for prefix, (suffix, field) in product(
+                        NeuType.neutrofile_components(), NeutrophileComponentParameters.__fields__.items()
+                    )
                 },
             )
             score_list = []
             for component_name in NeuType.neutrofile_components():
                 score = 1
-                for parameter in PARAMETER_TYPE_LIST:
-                    score *= annotation[val][f"{component_name} {parameter}"]
+                for parameter in NeutrophileComponentParameters.__fields__.values():
+                    score *= annotation[val][f"{component_name} {parameter.field_info.title}"]
                 score_list.append((score, component_name))
                 annotation[val][str(component_name) + SCORE_SUFFIX] = score
 
             score_list = sorted(score_list)
             if (
-                score_list[-1][0] < self.new_parameters["minimum_score"]
-                or score_list[-2][0] > self.new_parameters["maximum_other"]
+                score_list[-1][0] < self.new_parameters.minimum_score
+                or score_list[-2][0] > self.new_parameters.maximum_other
             ):
                 labeling[inner_dna_components == val] = NeuType.Unknown_intra.value
                 self.count_dict[NeuType.Unknown_intra] += 1
@@ -337,116 +416,107 @@ class Trapalyzer(NeutrofileSegmentationBase):
                 self.cell_count += 1
                 self.area_dict[score_list[-1][1]] += voxels
                 annotation[val][CATEGORY_STR] = score_list[-1][1]
-               
+
         return labeling, annotation
 
     def get_info_text(self):
+        image_size = self.image_size or 1
         return (
-            f"Annotation quality: {self.quality}" +
-            "\n" +
-            "\n".join(f"{name}: {self.count_dict[name]}, {self.area_dict[name]} px ({round(100*self.area_dict[name]/self.image_size, 2)}% image area)" for name in [NeuType.NET, NeuType.Unknown_extra] ) +
-            "\n" +
-            "\n".join(f"{name}: {self.count_dict[name]} ({round(100*self.count_dict[name]/self.cell_count, 2)} % cells), {self.area_dict[name]} px ({round(100*self.area_dict[name]/self.image_size, 2)}% image area)" for name in NeuType.neutrofile_components()) 
-            
+            f"Annotation quality: {self.quality}"
+            + "\n"
+            + "\n".join(
+                f"{name}: {self.count_dict[name]}, {self.area_dict[name]} px"
+                f" ({round(100*self.area_dict[name]/image_size, 2)}% image area)"
+                for name in [NeuType.NET, NeuType.Unknown_extra]
+            )
+            + "\n"
+            + "\n".join(
+                f"{name}: {self.count_dict[name]} ({round(100*self.count_dict[name] / (self.cell_count or 1), 2)}"
+                f" % cells), {self.area_dict[name]} px ({round(100*self.area_dict[name]/image_size, 2)}%"
+                f" image area)"
+                for name in NeuType.neutrofile_components()
+            )
         )
 
     def get_segmentation_profile(self) -> ROIExtractionProfile:
-        return ROIExtractionProfile("", self.get_name(), dict(self.new_parameters))
+        return ROIExtractionProfile(name="", algorithm=self.get_name(), values=self.new_parameters.copy())
 
     @classmethod
     def get_name(cls) -> str:
         return "Trapalyzer"
 
+
+class TrapalyzerSimpleParameters(BaseModel):
+    inner_dna: Channel = Field(1, title="All DNA channel")
+    inner_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    inner_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold type")
+    outer_dna: Channel = Field(1, title="Extracellural DNA channel")
+    outer_dna_noise_filtering: NoiseFilterSelection = Field(NoiseFilterSelection.get_default(), title="Filter type")
+    dead_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Thr. dead neu")
+    net_threshold: ThresholdSelection = Field(ThresholdSelection.get_default(), title="Threshold NET")
+    minimum_size: int = Field(
+        40, title="Minimum comp. pixel count", description="Minimum component pixel count", ge=1, le=9999
+    )
+
+
+class TrapalyzerSimple(NeutrofileSegmentationBase):
+    __argument_class__ = TrapalyzerSimpleParameters
+    new_parameters: TrapalyzerSimpleParameters
+
+    def calculation_run(self, report_fun: Callable[[str, int], None]) -> ROIExtractionResult:
+        inner_dna_channel = self.get_channel(self.new_parameters.inner_dna)
+        inner_noise_filtering_parameters = self.new_parameters.inner_dna_noise_filtering
+        cleaned_inner = NoiseFilterSelection[inner_noise_filtering_parameters.name].noise_filter(
+            inner_dna_channel, self.image.spacing, inner_noise_filtering_parameters.values
+        )
+        inner_dna_mask, thr_val = self._calculate_mask(cleaned_inner, self.new_parameters.inner_threshold)
+
+        outer_dna_channel = self.get_channel(self.new_parameters.outer_dna)
+        outer_noise_filtering_parameters = self.new_parameters.outer_dna_noise_filtering
+        cleaned_outer = NoiseFilterSelection[outer_noise_filtering_parameters.name].noise_filter(
+            outer_dna_channel, self.image.spacing, outer_noise_filtering_parameters.values
+        )
+        dead_dna_mask, dead_thr_val = self._calculate_mask(cleaned_outer, self.new_parameters.dead_threshold)
+        net_dna_mask, net_thr_val = self._calculate_mask(cleaned_outer, self.new_parameters.net_threshold)
+
+        inner_dna_components = self._calc_components(inner_dna_mask, self.new_parameters.minimum_size, close_holes=100)
+
+        labeled_neu, roi_annotation = self._classify_neutrofile(inner_dna_components, dead_dna_mask)
+
+        net_dna_mask[inner_dna_components > 0] = 0
+        net_components = self._calc_components(net_dna_mask, self.new_parameters.minimum_size, close_holes=100)
+
+        cmp_max = inner_dna_components.max()
+        for i in range(cmp_max + 1, cmp_max + net_components.max() + 1):
+            roi_annotation[i] = {CATEGORY_STR: 3}
+
+        labeled_neu[net_components > 0] = 3
+        inner_dna_components[net_components > 0] = net_components[net_components > 0] + cmp_max
+
+        return ROIExtractionResult(
+            roi=inner_dna_components,
+            parameters=self.get_segmentation_profile(),
+            alternative_representation={LABELING_NAME: labeled_neu},
+            roi_annotation=roi_annotation,
+        )
+
+    def _classify_neutrofile(self, inner_dna_components, dead_dna_mask):
+        bounds = ROIInfo.calc_bounds(inner_dna_components)
+        mapping = np.arange(0, np.max(inner_dna_components) + 1, dtype=np.uint16)
+        annotation = {}
+        for val in np.unique(inner_dna_components):
+            if val == 0:
+                continue
+            slices = tuple(bounds[val].get_slices(margin=5))
+            component_mask = inner_dna_components[slices] == val
+            dead_mask = dead_dna_mask[slices]
+            mapping[val] = 2 if np.any(component_mask * dead_mask) else 1
+            annotation[val] = {CATEGORY_STR: mapping[val]}
+        return mapping[inner_dna_components], annotation
+
     @classmethod
-    def get_fields(cls) -> typing.List[typing.Union[AlgorithmProperty, str]]:
-        initial = list(
-            chain(
-                *(
-                    [
-                        AlgorithmProperty(
-                            f"{prefix.name.lower()}_{suffix}",
-                            f"{prefix} {suffix}",
-                            {"lower_bound": 0, "upper_bound": 1},
-                            property_type=TrapezoidWidget,
-                            help_text=f"{DESCRIPTION_DICT[prefix]} {suffix}",
-                        )
-                        for suffix in PARAMETER_TYPE_LIST
-                    ]
-                    + ["-------------------"]
-                    for prefix in NeuType.neutrofile_components()
-                )
-            )
-        ) + [
-            AlgorithmProperty("minimum_score", "Minimum score", 0.8),
-            AlgorithmProperty("maximum_other", "Maximum competing score", 0.4),
-            AlgorithmProperty(
-                "minimum_size", "Minimum comp. pixel count", 40, (1, 9999), help_text="Minimum component pixel count"
-            ),
-            AlgorithmProperty("softness", "Error margin coeficient", 0.1, (0, 1)),
-        ]
-
-        thresholds = [
-            AlgorithmProperty("inner_dna", "All DNA channel", 1, property_type=Channel),
-            AlgorithmProperty(
-                "inner_dna_noise_filtering",
-                "Filter type",
-                next(iter(noise_filtering_dict.keys())),
-                possible_values=noise_filtering_dict,
-                value_type=AlgorithmDescribeBase,
-            ),
-            AlgorithmProperty(
-                "inner_threshold",
-                "Threshold type",
-                next(iter(threshold_dict.keys())),
-                possible_values=threshold_dict,
-                property_type=AlgorithmDescribeBase,
-            ),
-            AlgorithmProperty("outer_dna", "Extracellural DNA channel", 1, property_type=Channel),
-            AlgorithmProperty(
-                "outer_dna_noise_filtering",
-                "Filter type",
-                next(iter(noise_filtering_dict.keys())),
-                possible_values=noise_filtering_dict,
-                value_type=AlgorithmDescribeBase,
-            ),
-            AlgorithmProperty(
-                "outer_threshold",
-                "Threshold type",
-                next(iter(threshold_dict.keys())),
-                possible_values=threshold_dict,
-                property_type=AlgorithmDescribeBase,
-            ),
-            AlgorithmProperty(
-                "net_size",
-                "NET pixel count",
-                {"lower_bound": 850, "upper_bound": 999999},
-                property_type=TrapezoidWidget,
-            ),
-            AlgorithmProperty(
-                "net_ext_brightness",
-                "NET extracellular brightness",
-                {"lower_bound": 21, "upper_bound": 100},
-                property_type=TrapezoidWidget,
-            ),
-            # AlgorithmProperty(
-            #     "net_brightness_gradient",
-            #     "NET ext. brightness gradient",
-            #     {"lower_bound": -1.0, "upper_bound": 1.0},
-            #     property_type=TrapezoidWidget,
-            # ),
-            AlgorithmProperty(
-                "net_ext_brightness_std",
-                "NET ext. brightness SD",
-                {"lower_bound": 0.0, "upper_bound": 1.0},
-                property_type=TrapezoidWidget,
-            ),
-            AlgorithmProperty(
-                "unknown_net", "detect extracellular artifacts", True, help_text="If mark unknown net components"
-            ),
-            "-----------------------",
-        ]
-
-        return thresholds + initial
+    def get_name(cls) -> str:
+        return "Trapalyzer simple"
 
 
 def trapezoid_score_function(x, lower_bound, upper_bound, softness=0.5):
@@ -490,10 +560,10 @@ def gaussian_score_function(x, lbound, ubound, softness=0.5):
     if x <= lbound - 3.5 * sd_l or x >= ubound + 3.5 * sd_u:
         return 0.0
     if lbound - 3.5 * sd_l <= x <= lbound:
-        logscore = -0.5 * (lbound - x) ** 2 / sd_l ** 2
+        logscore = -0.5 * (lbound - x) ** 2 / sd_l**2
         return np.exp(logscore)
     if ubound <= x <= ubound + 3.5 * sd_u:
-        logscore = -0.5 * (x - ubound) ** 2 / sd_u ** 2
+        logscore = -0.5 * (x - ubound) ** 2 / sd_u**2
         return np.exp(logscore)
 
 
@@ -528,8 +598,8 @@ def new_sphericity(component: np.ndarray, voxel_size):
     area = np.count_nonzero(component) * voxel_area
     coordinates = np.transpose(np.nonzero(component)) * voxel_size - center
     radius_square = area / np.pi
-    return np.sum(np.sum(coordinates ** 2, axis=1) <= radius_square) / (
-        area / voxel_area + np.sum(np.sum(coordinates ** 2, axis=1) > radius_square)
+    return np.sum(np.sum(coordinates**2, axis=1) <= radius_square) / (
+        area / voxel_area + np.sum(np.sum(coordinates**2, axis=1) > radius_square)
     )
 
 
@@ -554,8 +624,8 @@ def curvature(x, y, *args):
     k = np.zeros(n)
     for i in range(n):
         ddx = x[(i + 1) % n] + x[(i - 1) % n] - 2 * x[i]
-        ddx *= n ** 2
+        ddx *= n**2
         ddy = y[(i + 1) % n] + y[(i - 1) % n] - 2 * y[i]
-        ddy *= n ** 2
-        k[i] = np.sqrt(ddx ** 2 + ddy ** 2)
+        ddy *= n**2
+        k[i] = np.sqrt(ddx**2 + ddy**2)
     return k
