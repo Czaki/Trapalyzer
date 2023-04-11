@@ -14,13 +14,14 @@ distribution, we recommend installing PartSeg by running
 
 After you have installed PartSeg, you can install Trapalyzer:
 
-- On Windows, download the ZIP file with the plug-in (see the screenshot
-   below). Unpack the .zip archive and move the `Trapalyzer` directory
-   (located in `Trapalyzer-master/src` in the unpacked archive) to the
-  `plugins` directory in the PartSeg folder.
-- On Linux, we recommend installing via `pip install Trapalyzer`.
+- If you install PArtSeg from prebuild binaries (from zip) then you need to download 
+  this plugin from [release page](https://github.com/Czaki/Trapalyzer/releases) and unpack it to `plugins` directory in PartSeg folder.
+- If you install PartSeg using pip or conda then you can install this plugin using pip
+  `pip install Trapalyzer`
 
-![](Tutorial/Figs/download.png)
+
+
+![](Tutorial/Figs/release_img.png)
 
 ## Usage examples
 
